@@ -64,3 +64,19 @@ def create_circle(circle: CircleCreate):
         "invite_code": new_circle[2]
 
     }
+
+@app.get("/circles/{circle_id}")
+def get_circle(circle_id: int):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, name, invite_code, created_at FROM circles WHERE id = %s;", (circle_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if row:        
+        return {
+            "id": row[0],
+            "name": row[1],
+            "invite_code": row[2],
+            "created_at": row[3]
+        }
+    return {"error": "Circle not found"}, 404
