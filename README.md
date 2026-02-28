@@ -30,3 +30,14 @@ The exact commands someone would need. Pretend you're explaining it to yourself 
 - Python + FastAPI for backend (already knew Python)
 - Neon.tech for PostgreSQL (Codespaces had permission issues with local postgres)
 - GitHub Codespaces for development environment
+  
+### Session 2 — Feb 27 2026
+**Built:** JWT auth, register, login, protected routes, .env secrets
+**Learned:**
+- Why passwords are hashed and how bcrypt works
+- What a JWT token is and how to decode it
+- How to protect routes with Depends()
+- How to use .env to keep secrets out of GitHub
+- How to read tracebacks to find the actual error line
+**Stuck on:** .env not reloading without restarting uvicorn
+**Next session:** GET /users/me, then start users-circles relationship (join a circle, list my circles)
