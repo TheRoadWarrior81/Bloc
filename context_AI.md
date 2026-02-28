@@ -4,6 +4,8 @@
 - Database: PostgreSQL on Neon.tech
 - Environment: GitHub Codespaces
 - Current file: main.py in /workspaces/circleshift-api
-- Last working route: POST /circles returns created circle as dict
-- Next task: build users table + register/login routes + JWT auth
+- Last working route: POST /circles (protected with JWT)
+- Completed routes: GET /hello, GET /test-db, GET /circles, POST /circles (protected), GET /circles/:id, POST /users/register, POST /users/login
+- Next task: GET /users/me, then connect users to circles (join circle, list my circles)
+- Auth: JWT working, passwords hashed with bcrypt, secrets in .env
 - I am a beginner — explain things from first principles
