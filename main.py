@@ -1,19 +1,37 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI
+
+from fastapi import FastAPI, HTTPException, Header, Depends
 from pydantic import BaseModel
+from typing import Optional
 import psycopg2
 import bcrypt
 import jwt
 import os
 from datetime import datetime, timedelta
+from fastapi.security import HTTPBearer
+
+
+security = HTTPBearer()
 
 
 app  = FastAPI()
 
 DB_URL = os.getenv("DB_URL")
 JWT_SECRET = os.getenv("JWT_SECRET")
+
+
+
+def verify_token(credentials=Depends(security)):
+    try:
+        token = credentials.credentials
+        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
 def get_db():
     conn = psycopg2.connect(DB_URL)
@@ -56,7 +74,7 @@ def get_circles():
     return {"circles": circles}
 
 @app.post("/circles")
-def create_circle(circle: CircleCreate):
+def create_circle(circle: CircleCreate, user=Depends(verify_token)):
     conn = get_db()
     cursor = conn.cursor()
 
