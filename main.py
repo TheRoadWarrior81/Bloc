@@ -251,7 +251,7 @@ def get_my_circles(user=Depends(verify_token)):
             "joined_at": row[3]
         })
 
-    return {"circles": circles}
+    return circles
 
 @app.get("/circles/{circle_id}/members")
 def get_circle_members(circle_id: int, user=Depends(verify_token)):
