@@ -17,6 +17,13 @@ security = HTTPBearer()
 
 
 app  = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://bloc-join-gather.vercel.app"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 DB_URL = os.getenv("DB_URL")
 JWT_SECRET = os.getenv("JWT_SECRET")
