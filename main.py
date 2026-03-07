@@ -175,7 +175,7 @@ def login(user: UserLogin):
         algorithm="HS256"
     )
 
-    return {"token": token}
+    return {"token": token, "user_id": row[0], "username": row[1]}
 
 @app.get("/users/me")
 def get_me(user=Depends(verify_token)):
