@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, HTTPException, Header, Depends
 from pydantic import BaseModel
 from typing import Optional
