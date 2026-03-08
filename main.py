@@ -282,7 +282,7 @@ def get_circle_members(circle_id: int, user=Depends(verify_token)):
             "joined_at": row[2]
         })
 
-    return {"members": members}
+    return members
 
 @app.post("/circles/join-by-code")
 def join_by_code(invite_code: str, user=Depends(verify_token)):
