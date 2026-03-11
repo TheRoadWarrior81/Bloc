@@ -9,6 +9,8 @@ import psycopg2
 import bcrypt
 import jwt
 import os
+import random
+import string
 from datetime import datetime, timedelta
 from fastapi.security import HTTPBearer
 
@@ -46,7 +48,7 @@ def get_db():
 
 class CircleCreate(BaseModel):
     name: str
-    invite_code: str
+    invite_code: str | None = None
 
 @app.get("/hello")
 def hello():
@@ -84,20 +86,20 @@ def get_circles(user=Depends(verify_token)):
 def create_circle(circle: CircleCreate, user=Depends(verify_token)):
     conn = get_db()
     cursor = conn.cursor()
-
+    
+    invite_code = circle.invite_code or ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+    
     cursor.execute("INSERT INTO circles (name, invite_code) VALUES (%s, %s) RETURNING id, name, invite_code;",
-        (circle.name, circle.invite_code))
+        (circle.name, invite_code))
     
     new_circle = cursor.fetchone()
     conn.commit()
     conn.close()
-
     return {
         "id": new_circle[0],
         "name": new_circle[1],
         "invite_code": new_circle[2]
-
-    }
+    } 
 
 @app.get("/circles/{circle_id}")
 def get_circle(circle_id: int):
