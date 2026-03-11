@@ -9,7 +9,7 @@ A private social app for friend groups called "blocs" — users register, log in
 - `GET /hello` — health check
 - `GET /test-db` — confirms database connection
 - `GET /circles` — list all circles (protected)
-- `POST /circles` — create a circle (protected)
+- `POST /circles` — create a circle (protected), auto-generates invite code
 - `GET /circles/{id}` — get a single circle
 - `GET /circles/{id}/members` — see who's in a circle (protected)
 - `POST /circles/{id}/join` — join a circle by ID (protected)
@@ -21,9 +21,10 @@ A private social app for friend groups called "blocs" — users register, log in
 
 ### Frontend (React + TypeScript)
 - Login and Register screens
-- My Blocs — lists joined blocs with member counts
+- My Blocs — lists joined blocs with member counts, skeleton loading state
+- Create a Bloc — name input, auto-generates invite code on backend
 - Join a Bloc — invite code input
-- Bloc Detail — bloc name, colour badge, member list
+- Bloc Detail — bloc name, colour badge, member list, invite code with copy button
 - Bottom nav, dark UI, violet accent, glass-card styling
 - Connected to real API — no more mocks
 
@@ -61,6 +62,10 @@ A private social app for friend groups called "blocs" — users register, log in
 - Why API routes should return arrays directly, not wrapped in objects
 - How JWT tokens are stored in localStorage and attached to protected requests
 - What a PWA is and how a web app can be added to iPhone home screen
+- Why React useEffect dependencies matter — localStorage is not reactive, state is
+- How skeleton loading states improve perceived performance
+- Why the creator of a resource needs to be added to junction tables manually
+- The difference between query parameters and request body in FastAPI
 
 ## How to run it locally
 ```bash
@@ -81,6 +86,24 @@ Make sure your `.env` file has:
 DB_URL=your_neon_connection_string
 JWT_SECRET=your_secret_key
 ```
+
+## Roadmap
+
+### Next session
+- Profile section — show username, email, option to update display name
+- Leave a bloc — one backend route, one button on BlocDetail
+- "You" badge on members list — compare logged-in user ID to member IDs
+
+### Soon
+- Real-time chat per bloc — messages table, WebSockets on backend, chat UI on frontend
+- PWA manifest — lets users add Bloc to iPhone home screen
+
+### Later
+- Push notifications — pairs with chat
+- Image uploads — profile pictures, media in chat (requires file storage like Cloudflare R2)
+- Bloc admin controls — kick members, delete a bloc, transfer ownership
+
+---
 
 ## Dev Log
 
@@ -177,3 +200,34 @@ JWT_SECRET=your_secret_key
 1. Fix re-render so blocs appear instantly after login without needing refresh
 2. Add create bloc screen on the frontend
 3. Clean up console.log debug lines
+4. Test full join flow with invite code end to end
+
+---
+
+### Session 6 — Mar 11 2026
+**Built:**
+- Fixed BlocContext to watch React `user` state instead of `localStorage` directly — blocs now load instantly after login
+- Added skeleton loading cards to My Blocs so the screen doesn't flash empty while fetching
+- Added Create a Bloc screen — name input, navigates to new bloc's detail screen on success
+- Fixed `POST /circles` to auto-generate an 8-character invite code on the backend
+- Fixed `POST /circles` to insert the creator into `user_circles` so the new bloc appears on their home screen
+- Fixed `POST /circles/join-by-code` to accept invite code as a request body instead of a query parameter
+- Added invite code display with one-tap copy button to Bloc Detail screen
+- Tested full end-to-end flow: register → login → create bloc → share invite code → new user joins → both see each other as members
+
+**Learned:**
+- Why `localStorage.getItem()` in a useEffect dependency doesn't work — React only re-renders when state changes, not when localStorage changes
+- What a skeleton loading state is and how `animate-pulse` works in Tailwind
+- The difference between a FastAPI query parameter (`def route(param: str)`) and a request body (`def route(body: Model)`) — and why it matters when the frontend sends JSON
+- Why creating a resource doesn't automatically link it to the creator — junction tables need to be updated manually
+- That a working MVP is resume-ready — it doesn't need every feature to be worth showing
+
+**Stuck on:**
+- Build failed on Vercel — `export default` was missing from MyBlocs.tsx after a paste
+- New bloc not appearing on home screen — traced to creator not being inserted into `user_circles`
+- Join by invite code failing — backend was expecting a query param, frontend was sending a JSON body
+
+**Next session:**
+1. Add profile section — show username, email, option to update display name
+2. Add leave a bloc button on Bloc Detail
+3. Show "You" badge next to logged-in user on members list
