@@ -31,7 +31,6 @@ DB_URL = os.getenv("DB_URL")
 JWT_SECRET = os.getenv("JWT_SECRET")
 
 
-
 def verify_token(credentials=Depends(security)):
     try:
         token = credentials.credentials
@@ -49,6 +48,9 @@ def get_db():
 class CircleCreate(BaseModel):
     name: str
     invite_code: str | None = None
+
+class JoinByCode(BaseModel):
+    invite_code: str
 
 @app.get("/hello")
 def hello():
@@ -127,7 +129,6 @@ class UserRegister(BaseModel):
 
 @app.post("/users/register")
 def register(user: UserRegister):
-    # Hash the password
     password_hash = bcrypt.hashpw(
         user.password.encode('utf-8'), 
         bcrypt.gensalt()
@@ -167,7 +168,6 @@ def login(user: UserLogin):
     if not row:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Check password against hash
     password_matches = bcrypt.checkpw(
         user.password.encode('utf-8'),
         row[3].encode('utf-8')
@@ -176,7 +176,6 @@ def login(user: UserLogin):
     if not password_matches:
         raise HTTPException(status_code=401, detail="Wrong password")
     
-    #Creat JWT token
     token = jwt.encode(
         {
         "user_id": row[0],
@@ -209,12 +208,12 @@ def get_me(user=Depends(verify_token)):
         "username": row[1],
         "email": row[2]
     }
+
 @app.post("/circles/{circle_id}/join")
 def join_circle(circle_id: int, user=Depends(verify_token)):
     conn = get_db()
     cursor = conn.cursor()
 
-    # Check the circle exists
     cursor.execute("SELECT id FROM circles WHERE id = %s;", (circle_id,))
     circle = cursor.fetchone()
 
@@ -222,7 +221,6 @@ def join_circle(circle_id: int, user=Depends(verify_token)):
         conn.close()
         raise HTTPException(status_code=404, detail="Circle not found")
 
-    # Add the connection
     cursor.execute(
         "INSERT INTO user_circles (user_id, circle_id) VALUES (%s, %s);",
         (user["user_id"], circle_id)
@@ -232,6 +230,7 @@ def join_circle(circle_id: int, user=Depends(verify_token)):
     conn.close()
 
     return {"message": f"Joined circle {circle_id}"}
+
 @app.get("/users/me/circles")
 def get_my_circles(user=Depends(verify_token)):
     conn = get_db()
@@ -263,7 +262,6 @@ def get_circle_members(circle_id: int, user=Depends(verify_token)):
     conn = get_db()
     cursor = conn.cursor()
 
-    # Check circle exists
     cursor.execute("SELECT id FROM circles WHERE id = %s;", (circle_id,))
     if not cursor.fetchone():
         conn.close()
@@ -290,13 +288,12 @@ def get_circle_members(circle_id: int, user=Depends(verify_token)):
     return members
 
 @app.post("/circles/join-by-code")
-def join_by_code(invite_code: str, user=Depends(verify_token)):
+def join_by_code(body: JoinByCode, user=Depends(verify_token)):
     conn = get_db()
     cursor = conn.cursor()
 
     try:
-        # Find the circle with this invite code
-        cursor.execute("SELECT id FROM circles WHERE invite_code = %s;", (invite_code,))
+        cursor.execute("SELECT id FROM circles WHERE invite_code = %s;", (body.invite_code,))
         circle = cursor.fetchone()
 
         if not circle:
@@ -304,7 +301,6 @@ def join_by_code(invite_code: str, user=Depends(verify_token)):
 
         circle_id = circle[0]
 
-        # Join it - Using your suggested fix
         try:
             cursor.execute(
                 "INSERT INTO user_circles (user_id, circle_id) VALUES (%s, %s);",
@@ -312,12 +308,10 @@ def join_by_code(invite_code: str, user=Depends(verify_token)):
             )
             conn.commit()
         except Exception:
-            # If the insert fails (usually due to a duplicate), we roll back and raise 400
             conn.rollback()
             raise HTTPException(status_code=400, detail="Already in this circle")
 
         return {"message": f"Joined circle {circle_id}"}
 
     finally:
-        # Always close the connection, regardless of success or failure
         conn.close()
