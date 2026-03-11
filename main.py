@@ -91,15 +91,18 @@ def create_circle(circle: CircleCreate, user=Depends(verify_token)):
     
     cursor.execute("INSERT INTO circles (name, invite_code) VALUES (%s, %s) RETURNING id, name, invite_code;",
         (circle.name, invite_code))
-    
     new_circle = cursor.fetchone()
+
+    cursor.execute("INSERT INTO user_circles (user_id, circle_id) VALUES (%s, %s);",
+        (user["user_id"], new_circle[0]))
+
     conn.commit()
     conn.close()
     return {
         "id": new_circle[0],
         "name": new_circle[1],
         "invite_code": new_circle[2]
-    } 
+    }
 
 @app.get("/circles/{circle_id}")
 def get_circle(circle_id: int):
