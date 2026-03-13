@@ -194,22 +194,22 @@ def get_me(user=Depends(verify_token)):
 def join_circle(circle_id: int, user=Depends(verify_token)):
     conn = get_db()
     cursor = conn.cursor()
-
     cursor.execute("SELECT id FROM circles WHERE id = %s;", (circle_id,))
     circle = cursor.fetchone()
-
     if not circle:
         conn.close()
         raise HTTPException(status_code=404, detail="Circle not found")
-
-    cursor.execute(
-        "INSERT INTO user_circles (user_id, circle_id) VALUES (%s, %s);",
-        (user["user_id"], circle_id)
-    )
-
-    conn.commit()
-    conn.close()
-
+    try:
+        cursor.execute(
+            "INSERT INTO user_circles (user_id, circle_id) VALUES (%s, %s);",
+            (user["user_id"], circle_id)
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail="Already in this circle")
+    finally:
+        conn.close()
     return {"message": f"Joined circle {circle_id}"}
 
 @app.get("/users/me/circles")
