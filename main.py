@@ -65,25 +65,6 @@ def test_db():
     conn.close()
     return {"database": result[0], "user": result[1]}
 
-@app.get("/circles")
-def get_circles(user=Depends(verify_token)):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, name, invite_code, created_at FROM circles;")
-    rows = cursor.fetchall()
-    conn.close()
-
-    circles = []
-    for row in rows:
-        circles.append({
-            "id": row[0],
-            "name": row[1],
-            "invite_code": row[2],
-            "created_at": row[3]
-        })
-
-    return {"circles": circles}
-
 @app.post("/circles")
 def create_circle(circle: CircleCreate, user=Depends(verify_token)):
     conn = get_db()
