@@ -6,17 +6,16 @@ A private social app for friend groups called "blocs" — users register, log in
 ## What I've built so far
 
 ### Backend (FastAPI)
-- `GET /hello` — health check
-- `GET /test-db` — confirms database connection
-- `GET /circles` — list all circles (protected)
-- `POST /circles` — create a circle (protected), auto-generates invite code
+- `POST /circles` — create a circle (protected), auto-generates invite code, adds creator to user_circles
 - `GET /circles/{id}` — get a single circle
 - `GET /circles/{id}/members` — see who's in a circle (protected)
-- `POST /circles/{id}/join` — join a circle by ID (protected)
+- `POST /circles/{id}/join` — join a circle by ID (protected), handles duplicate joins
+- `DELETE /circles/{id}/leave` — leave a circle (protected)
 - `POST /circles/join-by-code` — join a circle by invite code (protected)
 - `POST /users/register` — create an account
 - `POST /users/login` — login and get a JWT token
 - `GET /users/me` — get your own profile (protected)
+- `PATCH /users/me` — update username (protected)
 - `GET /users/me/circles` — list the circles you've joined (protected)
 
 ### Frontend (React + TypeScript)
@@ -24,9 +23,11 @@ A private social app for friend groups called "blocs" — users register, log in
 - My Blocs — lists joined blocs with member counts, skeleton loading state
 - Create a Bloc — name input, auto-generates invite code on backend
 - Join a Bloc — invite code input
-- Bloc Detail — bloc name, colour badge, member list, invite code with copy button
-- Bottom nav, dark UI, violet accent, glass-card styling
-- Connected to real API — no more mocks
+- Bloc Detail — bloc name, colour badge, member list, invite code with copy button, leave button, You badge
+- Profile — view username and email, edit username, logout
+- Bottom nav with Blocs, Join, Profile tabs
+- Session persistence — stay logged in after page refresh
+- Dark UI, violet accent, glass-card styling
 
 ## Tech stack
 - **Python + FastAPI** — already knew Python, FastAPI is fast to get routes working
@@ -66,6 +67,10 @@ A private social app for friend groups called "blocs" — users register, log in
 - How skeleton loading states improve perceived performance
 - Why the creator of a resource needs to be added to junction tables manually
 - The difference between query parameters and request body in FastAPI
+- How to rehydrate auth state on page load using a stored JWT token
+- Why returning null from a provider during loading prevents screen flashes
+- How route ordering in React Router works — catch-all must always be last
+- What a data leak is and how dead backend routes can expose data unintentionally
 
 ## How to run it locally
 ```bash
@@ -90,18 +95,15 @@ JWT_SECRET=your_secret_key
 ## Roadmap
 
 ### Next session
-- Profile section — show username, email, option to update display name
-- Leave a bloc — one backend route, one button on BlocDetail
-- "You" badge on members list — compare logged-in user ID to member IDs
-
-### Soon
-- Real-time chat per bloc — messages table, WebSockets on backend, chat UI on frontend
-- PWA manifest — lets users add Bloc to iPhone home screen
+- PWA manifest — lets users add Bloc to iPhone home screen (no backend work needed)
+- Start real-time chat — messages table, WebSocket route, chat UI
 
 ### Later
-- Push notifications — pairs with chat
-- Image uploads — profile pictures, media in chat (requires file storage like Cloudflare R2)
+- Push notifications (pairs with chat)
+- Image uploads for profile pictures (requires Cloudflare R2 or similar)
 - Bloc admin controls — kick members, delete a bloc, transfer ownership
+- Database indexes for performance at scale
+- Rate limiting on auth endpoints
 
 ---
 
@@ -168,66 +170,83 @@ JWT_SECRET=your_secret_key
 
 ### Session 5 — Mar 7 2026
 **Built:**
-- Deployed FastAPI backend to Railway (live at https://web-production-e808f.up.railway.app)
-- Deployed React frontend to Vercel (live at https://bloc-join-gather.vercel.app)
-- Created `requirements.txt` and `Procfile` for Railway deployment
-- Added CORS middleware to allow Vercel frontend to talk to Railway backend
-- Created `src/lib/api.ts` — central API helper that attaches JWT token to every request
-- Swapped mock `AuthContext.tsx` for real login/register API calls
-- Swapped mock `BlocContext.tsx` for real API calls to `/users/me/circles` and `/circles/{id}/members`
-- Added `vercel.json` to fix client-side routing on Vercel
-- Fixed login route to return `user_id` and `username` alongside the token
-- Fixed `/users/me/circles` and `/circles/{id}/members` to return arrays directly instead of wrapped objects
+- Deployed FastAPI backend to Railway
+- Deployed React frontend to Vercel
+- Created requirements.txt and Procfile for Railway
+- Added CORS middleware
+- Created src/lib/api.ts — central API helper
+- Swapped mock AuthContext and BlocContext for real API calls
+- Added vercel.json for client-side routing
+- Fixed login route to return user_id and username
+- Fixed routes to return arrays directly
 
 **Learned:**
-- What CORS is — browsers block requests between different origins unless the backend explicitly allows it
-- How to add CORS middleware in FastAPI
-- How Railway and Vercel connect to GitHub and auto-deploy on push
-- Why API routes should return arrays directly, not wrapped in `{"circles": [...]}` objects
-- How JWT tokens are stored in localStorage and attached to protected requests via Authorization header
-- What a PWA is — web apps can be added to iPhone home screen and work like native apps
+- What CORS is and how to add CORSMiddleware in FastAPI
+- How Railway and Vercel auto-deploy from GitHub
+- How JWT tokens are stored in localStorage and attached to requests
 - How to read Vercel build logs to find TypeScript errors
-- How to use Swagger (/docs) to manually test protected API routes
 
 **Stuck on:**
-- Lovable locked to read-only (free tier limit) — exported code to GitHub and switched to Vercel for hosting
-- requirements.txt had 80+ unnecessary Jupyter packages — replaced with clean minimal version
-- CORS blocking frontend requests — fixed by adding CORSMiddleware to FastAPI
-- Token not saving — caused by missing `async` on login handler in Login.tsx
-- Blocs not showing — caused by routes returning wrapped objects instead of plain arrays
+- Lovable locked to read-only — exported code to GitHub
+- requirements.txt had 80+ unnecessary packages
+- CORS blocking frontend requests
+- Token not saving — missing async on login handler
+- Blocs not showing — routes returning wrapped objects
 
-**Next session:**
-1. Fix re-render so blocs appear instantly after login without needing refresh
-2. Add create bloc screen on the frontend
-3. Clean up console.log debug lines
-4. Test full join flow with invite code end to end
+**Next session:** Fix re-render, add create bloc screen, clean up debug lines
 
 ---
 
 ### Session 6 — Mar 11 2026
 **Built:**
-- Fixed BlocContext to watch React `user` state instead of `localStorage` directly — blocs now load instantly after login
-- Added skeleton loading cards to My Blocs so the screen doesn't flash empty while fetching
-- Added Create a Bloc screen — name input, navigates to new bloc's detail screen on success
-- Fixed `POST /circles` to auto-generate an 8-character invite code on the backend
-- Fixed `POST /circles` to insert the creator into `user_circles` so the new bloc appears on their home screen
-- Fixed `POST /circles/join-by-code` to accept invite code as a request body instead of a query parameter
-- Added invite code display with one-tap copy button to Bloc Detail screen
-- Tested full end-to-end flow: register → login → create bloc → share invite code → new user joins → both see each other as members
+- Fixed BlocContext to watch React user state instead of localStorage
+- Added skeleton loading cards to My Blocs
+- Added Create a Bloc screen
+- Fixed POST /circles to auto-generate invite code and insert creator into user_circles
+- Fixed POST /circles/join-by-code to accept JSON body
+- Added invite code display with copy button to Bloc Detail
+- Tested full end-to-end flow
 
 **Learned:**
-- Why `localStorage.getItem()` in a useEffect dependency doesn't work — React only re-renders when state changes, not when localStorage changes
-- What a skeleton loading state is and how `animate-pulse` works in Tailwind
-- The difference between a FastAPI query parameter (`def route(param: str)`) and a request body (`def route(body: Model)`) — and why it matters when the frontend sends JSON
-- Why creating a resource doesn't automatically link it to the creator — junction tables need to be updated manually
-- That a working MVP is resume-ready — it doesn't need every feature to be worth showing
+- Why localStorage in useEffect dependency doesn't work
+- What animate-pulse skeleton loading is
+- Difference between FastAPI query param and request body
+- Why junction tables need manual creator insertion
 
 **Stuck on:**
-- Build failed on Vercel — `export default` was missing from MyBlocs.tsx after a paste
-- New bloc not appearing on home screen — traced to creator not being inserted into `user_circles`
-- Join by invite code failing — backend was expecting a query param, frontend was sending a JSON body
+- Missing export default on MyBlocs.tsx caused Vercel build failure
+- Creator not inserted into user_circles
+- Join by invite code — backend expected query param, frontend sent JSON body
+
+**Next session:** Profile section, leave a bloc, You badge, security fixes
+
+---
+
+### Session 7 — Mar 13 2026
+**Built:**
+- Profile screen — view username and email, edit username, logout button
+- PATCH /users/me backend route to update username
+- Leave Bloc button on BlocDetail — calls DELETE /circles/{id}/leave
+- DELETE /circles/{id}/leave backend route
+- "You" badge next to logged-in user on members list
+- Removed GET /circles data leak — route exposed all circles to any logged-in user
+- Fixed POST /circles/{id}/join duplicate join handling with try/except
+- Fixed session persistence — AuthContext now calls GET /users/me on page load to rehydrate user from stored token, no more logout on refresh
+- Moved logout from bottom nav to Profile screen (standard UX pattern)
+- Added Profile tab to bottom nav
+
+**Learned:**
+- How to rehydrate auth state on page load using a stored JWT — call /users/me with the token on mount
+- Why returning null from AuthProvider during the loading check prevents the login screen from flashing on refresh
+- What a data leak is — a route that returns data the logged-in user shouldn't have access to
+- How PATCH works in FastAPI for partial updates
+- Why DELETE /circles/{id}/leave uses rowcount to check if the user was actually in the circle
+- Route ordering matters in React Router — catch-all path="*" must be last or it swallows valid routes
+
+**Stuck on:**
+- Vercel deployment stuck at initializing — fixed by redeploying from dashboard
+- Hard refresh required after deploy due to browser cache
 
 **Next session:**
-1. Add profile section — show username, email, option to update display name
-2. Add leave a bloc button on Bloc Detail
-3. Show "You" badge next to logged-in user on members list
+1. PWA manifest — add to iPhone home screen
+2. Start real-time chat feature
