@@ -315,3 +315,23 @@ def join_by_code(body: JoinByCode, user=Depends(verify_token)):
 
     finally:
         conn.close()
+        
+class UserUpdate(BaseModel):
+    username: str
+
+@app.patch("/users/me")
+def update_me(update: UserUpdate, user=Depends(verify_token)):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE users SET username = %s WHERE id = %s RETURNING id, username, email;",
+        (update.username, user["user_id"])
+    )
+    updated = cursor.fetchone()
+    conn.commit()
+    conn.close()
+    return {
+        "id": updated[0],
+        "username": updated[1],
+        "email": updated[2]
+    }
