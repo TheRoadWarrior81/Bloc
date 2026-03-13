@@ -315,6 +315,21 @@ def join_by_code(body: JoinByCode, user=Depends(verify_token)):
 
     finally:
         conn.close()
+
+@app.delete("/circles/{circle_id}/leave")
+def leave_circle(circle_id: int, user=Depends(verify_token)):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        "DELETE FROM user_circles WHERE user_id = %s AND circle_id = %s;",
+        (user["user_id"], circle_id)
+    )
+    if cursor.rowcount == 0:
+        conn.close()
+        raise HTTPException(status_code=404, detail="You are not in this circle")
+    conn.commit()
+    conn.close()
+    return {"message": "Left circle successfully"}
         
 class UserUpdate(BaseModel):
     username: str
