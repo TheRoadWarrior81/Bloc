@@ -250,3 +250,19 @@ JWT_SECRET=your_secret_key
 **Next session:**
 1. PWA manifest — add to iPhone home screen
 2. Start real-time chat feature
+
+### Session 8 — Mar 15 2026
+**Built:** PWA manifest + icons, real-time chat (WebSocket, messages table, chat UI)
+**Learned:**
+- How PWA manifest and apple meta tags work
+- How WebSockets work in FastAPI with ConnectionManager
+- Why uvicorn needs the websockets package installed
+- How to pin a fixed input bar above bottom nav on mobile
+- Why user ID comparisons need String() casting
+
+**Stuck on:**
+- Railway dropping WebSocket connections — fixed by adding websockets to requirements.txt
+- Chat input hidden behind bottom nav on mobile — fixed with fixed positioning
+- /bloc vs /blocs route mismatch broke navigation
+
+**Next session:** Push notifications or image uploads
