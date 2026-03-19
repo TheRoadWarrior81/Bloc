@@ -265,4 +265,7 @@ JWT_SECRET=your_secret_key
 - Chat input hidden behind bottom nav on mobile — fixed with fixed positioning
 - /bloc vs /blocs route mismatch broke navigation
 
-**Next session:** Push notifications or image uploads
+**Next session:**
+1. WhatsApp-style navigation — tap bloc goes straight to chat, header tappable for group info
+2. Timestamps on messages
+3. WebSocket auto-reconnect logic
