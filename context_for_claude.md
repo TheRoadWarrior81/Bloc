@@ -94,18 +94,23 @@
 - Railway cold starts cause ~7 second delay on first request after inactivity
 
 ## Next session goals
-1. PWA manifest — lets users add Bloc to iPhone home screen (30 min, no backend work)
-2. Start real-time chat — messages table, WebSocket route on backend, chat UI on frontend
-
+1. WhatsApp-style navigation — tap bloc in MyBlocs goes straight to /blocs/:id/chat
+2. Chat header shows bloc name + member count, tappable to open BlocDetail (group info)
+3. BlocDetail becomes group info screen — back arrow returns to chat, remove Open Chat button
+4. Timestamps on messages in Chat
+5. WebSocket auto-reconnect logic in useChat.ts
+ 
 ## Future features (post-MVP)
 - Push notifications (pairs with chat)
 - Image uploads for profile pictures (requires file storage like Cloudflare R2)
 - Bloc admin controls — kick members, delete a bloc, transfer ownership
 - Database indexes for performance
 - Rate limiting on auth endpoints
-
+- Capacitor wrapper for App Store submission
+ 
 ## About the developer
 - Beginner — explain things from first principles
 - Learning by doing (vibecoding but wants to understand the code)
-- Goal: build something end-to-end and usable fast
-- App is resume-ready — profile, leave, security fixes and session persistence added in session 7
+- Goal: build something end-to-end and usable fast, eventually generate revenue
+- Based in Canada
+- App is resume-ready — full stack, real-time chat, PWA, deployed
