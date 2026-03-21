@@ -1,4 +1,4 @@
-# Bloc (formerly CircleShift)
+# Bloc (Your People. Your Space)
 
 ## What is this
 A private social app for friend groups called "blocs" — users register, log in, create or join blocs via invite codes, and see who's in them.
