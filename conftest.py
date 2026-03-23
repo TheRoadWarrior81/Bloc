@@ -7,7 +7,11 @@ from dotenv import load_dotenv
 load_dotenv(".env.test", override=True)
 
 from fastapi.testclient import TestClient
-from main import app, get_db
+from main import app
+from auth import get_db
+
+# Disable rate limiting during tests
+app.state.limiter.enabled = False
 
 @pytest.fixture(scope="session")
 def db():
