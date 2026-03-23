@@ -1,4 +1,4 @@
-# Bloc (formerly CircleShift)
+# Bloc 
 
 ## What is this
 A private social app for friend groups called "blocs" — users register, log in, create or join blocs via invite codes, and chat in real time.
@@ -335,3 +335,27 @@ JWT_SECRET=test-secret-key
 - Always activate venv before running Python commands
 
 **Stuck on:** Nothing — clean session
+
+### Session 11 — Mar 23 2026
+**Built:**
+- Rate limiting on /users/login and /users/register (5/minute via slowapi)
+- Input validation on all Pydantic models using Field min/max lengths (username, email, password, bloc name, invite code)
+- Refactored main.py into routers/users.py, routers/circles.py, routers/messages.py, auth.py, and models.py
+- Sentry error tracking on backend — captures unhandled exceptions with full stack traces, environment-aware (development/production)
+- Fixed test suite broken by rate limiter — solved with RATE_LIMIT env var, set to 1000/minute in .env.test
+
+**Learned:**
+- How slowapi rate limiting works and why it needs request: Request as a parameter
+- Why @limiter.limit() captures the limiter reference at import time — swapping the object later doesn't work
+- How to use environment variables to change behaviour between test and production environments
+- How Pydantic Field() validates input before route code even runs
+- How FastAPI routers work — APIRouter() replaces @app, included in main.py with include_router()
+- Why auth and models belong in separate files — routers import from them without circular dependencies
+- What Sentry does — captures unhandled exceptions automatically with full context
+- How traces_sample_rate works — 0.2 means 20% of requests are tracked for performance
+
+**Stuck on:**
+- Rate limiter not disabled by app.state.limiter.enabled = False — decorators capture limiter reference at import time
+- Codespace timeout mid-session — reconnected via github.com/codespaces
+
+**Next session:** Database indexes, pagination on messages and circles, EXPLAIN ANALYZE
