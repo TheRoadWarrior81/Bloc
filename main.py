@@ -2,9 +2,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi import FastAPI, HTTPException, Header, Depends, Request
 from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from typing import Optional
 import psycopg2
 import bcrypt
@@ -20,6 +23,9 @@ security = HTTPBearer()
 
 
 app  = FastAPI()
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://bloc-join-gather.vercel.app"],
@@ -110,9 +116,10 @@ class UserRegister(BaseModel):
     password: str
 
 @app.post("/users/register")
-def register(user: UserRegister):
+@limiter.limit("5/minute")
+def register(request: Request, body: UserRegister):
     password_hash = bcrypt.hashpw(
-        user.password.encode('utf-8'), 
+        body.password.encode('utf-8'), 
         bcrypt.gensalt()
     ).decode('utf-8')
     
@@ -121,7 +128,7 @@ def register(user: UserRegister):
     
     cursor.execute(
         "INSERT INTO users (username, email, password_hash) VALUES (%s, %s, %s) RETURNING id, username, email;",
-        (user.username, user.email, password_hash)
+        (body.username, body.email, password_hash)
     )
     
     new_user = cursor.fetchone()
@@ -139,19 +146,20 @@ class UserLogin(BaseModel):
     password: str
 
 @app.post("/users/login")
-def login(user: UserLogin):
-    conn  = get_db()
+@limiter.limit("5/minute")
+def login(request: Request, body: UserLogin):
+    conn = get_db()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT id, username, email, password_hash FROM users WHERE email = %s;" , (user.email,))
-    row  = cursor.fetchone()
+    cursor.execute("SELECT id, username, email, password_hash FROM users WHERE email = %s;", (body.email,))
+    row = cursor.fetchone()
     conn.close()
 
     if not row:
         raise HTTPException(status_code=404, detail="User not found")
     
     password_matches = bcrypt.checkpw(
-        user.password.encode('utf-8'),
+        body.password.encode('utf-8'),
         row[3].encode('utf-8')
     )
 
@@ -160,9 +168,9 @@ def login(user: UserLogin):
     
     token = jwt.encode(
         {
-        "user_id": row[0],
-        "username": row[1],
-        "exp": datetime.utcnow() + timedelta(days=7)
+            "user_id": row[0],
+            "username": row[1],
+            "exp": datetime.utcnow() + timedelta(days=7)
         },
         JWT_SECRET,
         algorithm="HS256"
