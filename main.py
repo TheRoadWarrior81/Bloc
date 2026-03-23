@@ -1,6 +1,7 @@
 from dotenv import load_dotenv
 load_dotenv()
 
+from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, HTTPException, Header, Depends, Request
 from fastapi import WebSocket, WebSocketDisconnect
@@ -53,11 +54,12 @@ def get_db():
     return conn
 
 class CircleCreate(BaseModel):
-    name: str
-    invite_code: str | None = None
+    name: str = Field(min_length=1, max_length=50)
+    invite_code: str | None = Field(default=None, max_length=20)
 
 class JoinByCode(BaseModel):
-    invite_code: str
+    invite_code: str = Field(min_length=1, max_length=20)
+
 
 @app.get("/hello")
 def hello():
@@ -111,9 +113,9 @@ def get_circle(circle_id: int):
     raise HTTPException(status_code=404, detail="Circle not found")
 
 class UserRegister(BaseModel):
-    username: str
-    email: str
-    password: str
+    username: str = Field(min_length=2, max_length=30)
+    email: str = Field(max_length=100)
+    password: str = Field(min_length=6, max_length=72)
 
 @app.post("/users/register")
 @limiter.limit("5/minute")
@@ -142,8 +144,8 @@ def register(request: Request, body: UserRegister):
     }
 
 class UserLogin(BaseModel):
-    email: str
-    password: str
+    email: str = Field(max_length=100)
+    password: str = Field(min_length=6, max_length=72)
 
 @app.post("/users/login")
 @limiter.limit("5/minute")
