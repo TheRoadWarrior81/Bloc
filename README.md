@@ -1,7 +1,7 @@
-# Bloc (Your People. Your Space)
+# Bloc (formerly CircleShift)
 
 ## What is this
-A private social app for friend groups called "blocs" — users register, log in, create or join blocs via invite codes, and see who's in them.
+A private social app for friend groups called "blocs" — users register, log in, create or join blocs via invite codes, and chat in real time.
 
 ## What I've built so far
 
@@ -13,21 +13,30 @@ A private social app for friend groups called "blocs" — users register, log in
 - `DELETE /circles/{id}/leave` — leave a circle (protected)
 - `POST /circles/join-by-code` — join a circle by invite code (protected)
 - `POST /users/register` — create an account
-- `POST /users/login` — login and get a JWT token
+- `POST /users/login` — login and get a JWT token (expires in 7 days)
 - `GET /users/me` — get your own profile (protected)
 - `PATCH /users/me` — update username (protected)
 - `GET /users/me/circles` — list the circles you've joined (protected)
+- `GET /circles/{id}/messages` — fetch message history (protected)
+- `WebSocket /circles/{id}/ws` — real-time chat, JWT verified on connect
 
 ### Frontend (React + TypeScript)
 - Login and Register screens
-- My Blocs — lists joined blocs with member counts, skeleton loading state
+- My Blocs — lists joined blocs, tap goes directly to chat (WhatsApp-style)
+- Chat — real-time messaging, bloc name + member count in header, timestamps on messages, auto-reconnect on disconnect
+- Group Info — tap chat header to see bloc details, members, invite code, leave button
 - Create a Bloc — name input, auto-generates invite code on backend
 - Join a Bloc — invite code input
-- Bloc Detail — bloc name, colour badge, member list, invite code with copy button, leave button, You badge
 - Profile — view username and email, edit username, logout
 - Bottom nav with Blocs, Join, Profile tabs
 - Session persistence — stay logged in after page refresh
 - Dark UI, violet accent, glass-card styling
+
+### Testing
+- 13 passing tests covering all core API flows
+- Separate test database on Neon — prod data never touched
+- Clean teardown after every test — no state leaks between runs
+- Covers: register, login, wrong password, no token, create bloc, creator auto-added as member, join by ID, duplicate join, join by invite code, invalid invite code, leave, leave when not a member
 
 ## Tech stack
 - **Python + FastAPI** — already knew Python, FastAPI is fast to get routes working
@@ -35,6 +44,8 @@ A private social app for friend groups called "blocs" — users register, log in
 - **GitHub Codespaces** — dev environment in the browser, no local setup
 - **JWT + bcrypt** — industry standard auth, passwords hashed, tokens stateless
 - **psycopg2** — connects Python to PostgreSQL
+- **WebSockets** — real-time chat via FastAPI WebSocket support
+- **pytest + httpx** — backend test suite, TestClient hits real routes against a test DB
 - **React + TypeScript via Lovable** — AI-generated frontend, dark UI, mobile-friendly
 - **Railway** — backend hosting, auto-deploys from GitHub
 - **Vercel** — frontend hosting, auto-deploys from GitHub
@@ -70,18 +81,28 @@ A private social app for friend groups called "blocs" — users register, log in
 - How to rehydrate auth state on page load using a stored JWT token
 - Why returning null from a provider during loading prevents screen flashes
 - How route ordering in React Router works — catch-all must always be last
-- What a data leak is and how dead backend routes can expose data unintentionally
+- How WebSockets work — persistent connection, broadcast to all members in a room
+- Why WebSocket auth uses a query param instead of a header
+- How auto-reconnect works — useCallback + a ref flag to prevent reconnecting after unmount
+- Why UTC timestamps need a Z suffix so browsers parse them correctly
+- What pytest fixtures are and how scope and autouse work
+- Why you need a separate test database — tests must never touch prod data
+- How to test negative cases — wrong password, duplicate join, leaving when not a member
+- What `git pull` does and why you run it before starting work in a Codespace
 
 ## How to run it locally
 ```bash
 # Activate virtual environment
 source venv/bin/activate
 
+# Install dependencies
+pip install -r requirements.txt
+
 # Start the server
 uvicorn main:app --reload
 
-# Check what's running on port 8000
-lsof -i :8000
+# Run tests
+pytest tests/ -v
 ```
 
 Then open `/docs` in your browser to test routes via Swagger UI.
@@ -92,18 +113,30 @@ DB_URL=your_neon_connection_string
 JWT_SECRET=your_secret_key
 ```
 
+And `.env.test` for running the test suite:
+```
+DB_URL=your_neon_test_database_connection_string
+JWT_SECRET=test-secret-key
+```
+
 ## Roadmap
 
-### Next session
-- PWA manifest — lets users add Bloc to iPhone home screen (no backend work needed)
-- Start real-time chat — messages table, WebSocket route, chat UI
+### Next session (11 + 12 + 13)
+- Rate limiting on auth endpoints (slowapi)
+- Input validation — max length on usernames, bloc names, messages
+- Refactor main.py into FastAPI routers
+- Sentry error tracking (backend + frontend)
+- Database indexes for performance
+- Pagination on messages and circles
+- Structured logging
+- Pydantic settings instead of raw os.getenv
 
 ### Later
+- Bloc admin controls — kick members, delete a bloc, transfer ownership
 - Push notifications (pairs with chat)
 - Image uploads for profile pictures (requires Cloudflare R2 or similar)
-- Bloc admin controls — kick members, delete a bloc, transfer ownership
-- Database indexes for performance at scale
-- Rate limiting on auth endpoints
+- Capacitor wrapper for App Store / TestFlight submission
+- Redis pub/sub for multi-instance WebSocket support
 
 ---
 
@@ -229,27 +262,24 @@ JWT_SECRET=your_secret_key
 - Leave Bloc button on BlocDetail — calls DELETE /circles/{id}/leave
 - DELETE /circles/{id}/leave backend route
 - "You" badge next to logged-in user on members list
-- Removed GET /circles data leak — route exposed all circles to any logged-in user
+- Removed GET /circles data leak
 - Fixed POST /circles/{id}/join duplicate join handling with try/except
-- Fixed session persistence — AuthContext now calls GET /users/me on page load to rehydrate user from stored token, no more logout on refresh
-- Moved logout from bottom nav to Profile screen (standard UX pattern)
-- Added Profile tab to bottom nav
+- Fixed session persistence — AuthContext now rehydrates user from stored token on page load
+- Moved logout from bottom nav to Profile screen
 
 **Learned:**
-- How to rehydrate auth state on page load using a stored JWT — call /users/me with the token on mount
-- Why returning null from AuthProvider during the loading check prevents the login screen from flashing on refresh
-- What a data leak is — a route that returns data the logged-in user shouldn't have access to
+- How to rehydrate auth state on page load using a stored JWT
+- Why returning null from AuthProvider during loading prevents login screen flash
+- What a data leak is
 - How PATCH works in FastAPI for partial updates
-- Why DELETE /circles/{id}/leave uses rowcount to check if the user was actually in the circle
-- Route ordering matters in React Router — catch-all path="*" must be last or it swallows valid routes
+- Why DELETE /circles/{id}/leave uses rowcount to check membership
+- Route ordering matters in React Router
 
 **Stuck on:**
 - Vercel deployment stuck at initializing — fixed by redeploying from dashboard
 - Hard refresh required after deploy due to browser cache
 
-**Next session:**
-1. PWA manifest — add to iPhone home screen
-2. Start real-time chat feature
+---
 
 ### Session 8 — Mar 15 2026
 **Built:** PWA manifest + icons, real-time chat (WebSocket, messages table, chat UI)
@@ -265,7 +295,43 @@ JWT_SECRET=your_secret_key
 - Chat input hidden behind bottom nav on mobile — fixed with fixed positioning
 - /bloc vs /blocs route mismatch broke navigation
 
-**Next session:**
-1. WhatsApp-style navigation — tap bloc goes straight to chat, header tappable for group info
-2. Timestamps on messages
-3. WebSocket auto-reconnect logic
+---
+
+### Session 9 — Mar 19 2026
+**Built:**
+- WhatsApp-style navigation — tapping a bloc in MyBlocs goes directly to chat
+- Chat header shows bloc name + member count, tappable to open group info
+- BlocDetail converted to group info screen — back arrow returns to chat, Open Chat button removed
+- Added /blocs/:id/info route in App.tsx
+- Timestamps on messages — shows local time (HH:MM) for today, date for older
+- Fixed UTC timestamp parsing — appending Z so browser treats created_at as UTC correctly
+- WebSocket auto-reconnect in useChat.ts — 3 second delay, stops reconnecting on unmount
+
+**Learned:**
+- How to extract a function into useCallback so it can safely call itself recursively
+- Why a ref (shouldReconnect) is the right tool to control reconnect behaviour across renders
+- UTC timestamps need Z suffix — without it browsers parse inconsistently
+- Same component (BlocDetail) can serve two routes (/blocs/:id and /blocs/:id/info)
+
+**Stuck on:** Nothing major this session
+
+---
+
+### Session 10 — Mar 20 2026
+**Built:**
+- Test database on Neon (bloc_test) — completely separate from prod
+- .env.test config file for test environment
+- conftest.py — pytest fixtures for client, db connection, and autouse table cleanup
+- tests/test_api.py — 13 passing tests covering all core flows
+- Learned when and why to skip frontend testing (Vitest deferred — not enough pure logic yet)
+
+**Learned:**
+- What pytest fixtures are — scope="session" vs per-test, autouse=True
+- Why test databases exist — never run tests against prod data
+- How TestClient works — hits real FastAPI routes in memory, no server needed
+- Why negative tests matter — wrong password, duplicate join, leaving when not a member
+- Delete order matters with foreign keys — messages → user_circles → circles → users
+- git pull syncs Codespace with GitHub before starting work
+- Always activate venv before running Python commands
+
+**Stuck on:** Nothing — clean session
