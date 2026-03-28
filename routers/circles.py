@@ -18,8 +18,8 @@ def create_circle(circle: CircleCreate, user=Depends(verify_token)):
         (circle.name, invite_code)
     )
     new_circle = cursor.fetchone()
-    cursor.execute("INSERT INTO user_circles (user_id, circle_id) VALUES (%s, %s);",
-        (user["user_id"], new_circle[0]))
+    cursor.execute("INSERT INTO user_circles (user_id, circle_id, role) VALUES (%s, %s, %s);",
+        (user["user_id"], new_circle[0], "admin"))
     conn.commit()
     conn.close()
     logger.info(f"circle created circle_id={new_circle[0]} user_id={user['user_id']}")
@@ -47,14 +47,14 @@ def get_circle_members(circle_id: int, user=Depends(verify_token)):
         logger.warning(f"members fetch failed — circle not found circle_id={circle_id}")
         raise HTTPException(status_code=404, detail="Circle not found")
     cursor.execute("""
-        SELECT users.id, users.username, user_circles.joined_at
+        SELECT users.id, users.username, user_circles.joined_at, user_circles.role
         FROM users
         JOIN user_circles ON users.id = user_circles.user_id
         WHERE user_circles.circle_id = %s;
     """, (circle_id,))
     rows = cursor.fetchall()
     conn.close()
-    return [{"id": r[0], "username": r[1], "joined_at": r[2]} for r in rows]
+    return [{"id": r[0], "username": r[1], "joined_at": r[2], "role": r[3]} for r in rows]
 
 @router.post("/circles/{circle_id}/join")
 def join_circle(circle_id: int, user=Depends(verify_token)):
@@ -115,3 +115,64 @@ def leave_circle(circle_id: int, user=Depends(verify_token)):
     conn.close()
     logger.info(f"user left circle user_id={user['user_id']} circle_id={circle_id}")
     return {"message": "Left circle successfully"}
+
+@router.delete("/circles/{circle_id}/members/{target_user_id}")
+def kick_member(circle_id: int, target_user_id: int, user=Depends(verify_token)):
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Check requester is admin
+    cursor.execute(
+        "SELECT role FROM user_circles WHERE circle_id = %s AND user_id = %s;",
+        (circle_id, user["user_id"])
+    )
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=403, detail="You are not in this circle")
+    if row[0] != "admin":
+        conn.close()
+        raise HTTPException(status_code=403, detail="Only admins can kick members")
+
+    # Can't kick yourself
+    if target_user_id == user["user_id"]:
+        conn.close()
+        raise HTTPException(status_code=400, detail="You cannot kick yourself — use leave instead")
+
+    # Kick the target
+    cursor.execute(
+        "DELETE FROM user_circles WHERE user_id = %s AND circle_id = %s;",
+        (target_user_id, circle_id)
+    )
+    if cursor.rowcount == 0:
+        conn.close()
+        raise HTTPException(status_code=404, detail="User is not in this circle")
+    conn.commit()
+    conn.close()
+    logger.info(f"member kicked circle_id={circle_id} target_user_id={target_user_id} by admin_user_id={user['user_id']}")
+    return {"message": f"User {target_user_id} removed from circle"}
+
+@router.delete("/circles/{circle_id}")
+def delete_circle(circle_id: int, user=Depends(verify_token)):
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Check requester is admin
+    cursor.execute(
+        "SELECT role FROM user_circles WHERE circle_id = %s AND user_id = %s;",
+        (circle_id, user["user_id"])
+    )
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=403, detail="You are not in this circle")
+    if row[0] != "admin":
+        conn.close()
+        raise HTTPException(status_code=403, detail="Only admins can delete a bloc")
+
+    # Delete the circle — cascades to user_circles and messages
+    cursor.execute("DELETE FROM circles WHERE id = %s;", (circle_id,))
+    conn.commit()
+    conn.close()
+    logger.info(f"circle deleted circle_id={circle_id} by admin_user_id={user['user_id']}")
+    return {"message": "Bloc deleted"}

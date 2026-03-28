@@ -90,17 +90,14 @@ def test_creator_is_added_as_member(client):
     assert user_id in member_ids
 
 def test_join_circle(client):
-    # User A creates a bloc
     token_a, _ = register_and_login(client, "userA", "a@example.com")
     circle_res = client.post("/circles", json={"name": "Test Bloc"}, headers=auth_headers(token_a))
     circle_id = circle_res.json()["id"]
 
-    # User B joins it
     token_b, user_id_b = register_and_login(client, "userB", "b@example.com")
     res = client.post(f"/circles/{circle_id}/join", headers=auth_headers(token_b))
     assert res.status_code == 200
 
-    # Confirm B is in the members list
     members_res = client.get(f"/circles/{circle_id}/members", headers=auth_headers(token_a))
     member_ids = [m["id"] for m in members_res.json()]
     assert user_id_b in member_ids
@@ -111,7 +108,6 @@ def test_join_circle_duplicate(client):
     circle_res = client.post("/circles", json={"name": "Test Bloc"}, headers=auth_headers(token))
     circle_id = circle_res.json()["id"]
 
-    # Creator tries to join again
     res = client.post(f"/circles/{circle_id}/join", headers=auth_headers(token))
     assert res.status_code == 400
 
@@ -137,11 +133,9 @@ def test_leave_circle(client):
     token_b, user_id_b = register_and_login(client, "userB", "b@example.com")
     client.post(f"/circles/{circle_id}/join", headers=auth_headers(token_b))
 
-    # B leaves
     res = client.delete(f"/circles/{circle_id}/leave", headers=auth_headers(token_b))
     assert res.status_code == 200
 
-    # Confirm B is no longer in members
     members_res = client.get(f"/circles/{circle_id}/members", headers=auth_headers(token_a))
     member_ids = [m["id"] for m in members_res.json()]
     assert user_id_b not in member_ids
@@ -155,3 +149,85 @@ def test_leave_circle_not_member(client):
     token_b, _ = register_and_login(client, "userB", "b@example.com")
     res = client.delete(f"/circles/{circle_id}/leave", headers=auth_headers(token_b))
     assert res.status_code == 404
+
+# ── Admin tests ───────────────────────────────────────────────────────────────
+
+def test_creator_is_admin(client):
+    """Creator should have role=admin in the members list."""
+    token, user_id = register_and_login(client)
+    circle_res = client.post("/circles", json={"name": "Test Bloc"}, headers=auth_headers(token))
+    circle_id = circle_res.json()["id"]
+
+    members_res = client.get(f"/circles/{circle_id}/members", headers=auth_headers(token))
+    me = next(m for m in members_res.json() if m["id"] == user_id)
+    assert me["role"] == "admin"
+
+def test_member_role_is_member(client):
+    """Non-creator who joins should have role=member."""
+    token_a, _ = register_and_login(client, "userA", "a@example.com")
+    circle_res = client.post("/circles", json={"name": "Test Bloc"}, headers=auth_headers(token_a))
+    circle_id = circle_res.json()["id"]
+
+    token_b, user_id_b = register_and_login(client, "userB", "b@example.com")
+    client.post(f"/circles/{circle_id}/join", headers=auth_headers(token_b))
+
+    members_res = client.get(f"/circles/{circle_id}/members", headers=auth_headers(token_a))
+    b = next(m for m in members_res.json() if m["id"] == user_id_b)
+    assert b["role"] == "member"
+
+def test_admin_can_kick_member(client):
+    """Admin should be able to kick a member."""
+    token_a, _ = register_and_login(client, "userA", "a@example.com")
+    circle_res = client.post("/circles", json={"name": "Test Bloc"}, headers=auth_headers(token_a))
+    circle_id = circle_res.json()["id"]
+
+    token_b, user_id_b = register_and_login(client, "userB", "b@example.com")
+    client.post(f"/circles/{circle_id}/join", headers=auth_headers(token_b))
+
+    res = client.delete(f"/circles/{circle_id}/members/{user_id_b}", headers=auth_headers(token_a))
+    assert res.status_code == 200
+
+    members_res = client.get(f"/circles/{circle_id}/members", headers=auth_headers(token_a))
+    member_ids = [m["id"] for m in members_res.json()]
+    assert user_id_b not in member_ids
+
+def test_member_cannot_kick(client):
+    """Non-admin should get 403 when trying to kick."""
+    token_a, _ = register_and_login(client, "userA", "a@example.com")
+    circle_res = client.post("/circles", json={"name": "Test Bloc"}, headers=auth_headers(token_a))
+    circle_id = circle_res.json()["id"]
+
+    token_b, user_id_b = register_and_login(client, "userB", "b@example.com")
+    client.post(f"/circles/{circle_id}/join", headers=auth_headers(token_b))
+
+    token_c, user_id_c = register_and_login(client, "userC", "c@example.com")
+    client.post(f"/circles/{circle_id}/join", headers=auth_headers(token_c))
+
+    # B tries to kick C — should fail
+    res = client.delete(f"/circles/{circle_id}/members/{user_id_c}", headers=auth_headers(token_b))
+    assert res.status_code == 403
+
+def test_admin_can_delete_circle(client):
+    """Admin should be able to delete the bloc entirely."""
+    token, _ = register_and_login(client)
+    circle_res = client.post("/circles", json={"name": "Test Bloc"}, headers=auth_headers(token))
+    circle_id = circle_res.json()["id"]
+
+    res = client.delete(f"/circles/{circle_id}", headers=auth_headers(token))
+    assert res.status_code == 200
+
+    # Circle should no longer exist
+    get_res = client.get(f"/circles/{circle_id}")
+    assert get_res.status_code == 404
+
+def test_member_cannot_delete_circle(client):
+    """Non-admin should get 403 when trying to delete the bloc."""
+    token_a, _ = register_and_login(client, "userA", "a@example.com")
+    circle_res = client.post("/circles", json={"name": "Test Bloc"}, headers=auth_headers(token_a))
+    circle_id = circle_res.json()["id"]
+
+    token_b, _ = register_and_login(client, "userB", "b@example.com")
+    client.post(f"/circles/{circle_id}/join", headers=auth_headers(token_b))
+
+    res = client.delete(f"/circles/{circle_id}", headers=auth_headers(token_b))
+    assert res.status_code == 403
