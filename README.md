@@ -1,4 +1,4 @@
-# Bloc 
+# Bloc
 
 ## What is this
 A private social app for friend groups called "blocs" — users register, log in, create or join blocs via invite codes, and chat in real time.
@@ -6,25 +6,27 @@ A private social app for friend groups called "blocs" — users register, log in
 ## What I've built so far
 
 ### Backend (FastAPI)
-- `POST /circles` — create a circle (protected), auto-generates invite code, adds creator to user_circles
-- `GET /circles/{id}` — get a single circle
-- `GET /circles/{id}/members` — see who's in a circle (protected)
-- `POST /circles/{id}/join` — join a circle by ID (protected), handles duplicate joins
-- `DELETE /circles/{id}/leave` — leave a circle (protected)
-- `POST /circles/join-by-code` — join a circle by invite code (protected)
+- `POST /circles` — create a bloc (protected), auto-generates invite code, adds creator as admin
+- `GET /circles/{id}` — get a single bloc
+- `GET /circles/{id}/members` — see who's in a bloc with their roles (protected)
+- `POST /circles/{id}/join` — join a bloc by ID (protected), handles duplicate joins
+- `DELETE /circles/{id}/leave` — leave a bloc (protected)
+- `POST /circles/join-by-code` — join a bloc by invite code (protected)
+- `DELETE /circles/{id}/members/{user_id}` — kick a member, admin only (protected)
+- `DELETE /circles/{id}` — delete a bloc, admin only, cascades to all data (protected)
 - `POST /users/register` — create an account
 - `POST /users/login` — login and get a JWT token (expires in 7 days)
 - `GET /users/me` — get your own profile (protected)
 - `PATCH /users/me` — update username (protected)
-- `GET /users/me/circles` — list the circles you've joined (protected)
-- `GET /circles/{id}/messages` — fetch message history (protected)
+- `GET /users/me/circles` — list the blocs you've joined (protected)
+- `GET /circles/{id}/messages` — fetch message history with cursor-based pagination (protected)
 - `WebSocket /circles/{id}/ws` — real-time chat, JWT verified on connect
 
 ### Frontend (React + TypeScript)
 - Login and Register screens
 - My Blocs — lists joined blocs, tap goes directly to chat (WhatsApp-style)
 - Chat — real-time messaging, bloc name + member count in header, timestamps on messages, auto-reconnect on disconnect
-- Group Info — tap chat header to see bloc details, members, invite code, leave button
+- Group Info — tap chat header to see bloc details, members with roles, invite code, leave button, kick members (admin only), delete bloc (admin only)
 - Create a Bloc — name input, auto-generates invite code on backend
 - Join a Bloc — invite code input
 - Profile — view username and email, edit username, logout
@@ -33,10 +35,10 @@ A private social app for friend groups called "blocs" — users register, log in
 - Dark UI, violet accent, glass-card styling
 
 ### Testing
-- 13 passing tests covering all core API flows
+- 19 passing tests covering all core API flows
 - Separate test database on Neon — prod data never touched
 - Clean teardown after every test — no state leaks between runs
-- Covers: register, login, wrong password, no token, create bloc, creator auto-added as member, join by ID, duplicate join, join by invite code, invalid invite code, leave, leave when not a member
+- Covers: register, login, wrong password, no token, create bloc, creator auto-added as admin, join by ID, duplicate join, join by invite code, invalid invite code, leave, leave when not a member, creator is admin, member role, kick member, non-admin cannot kick, delete bloc, non-admin cannot delete
 
 ## Tech stack
 - **Python + FastAPI** — already knew Python, FastAPI is fast to get routes working
@@ -45,10 +47,14 @@ A private social app for friend groups called "blocs" — users register, log in
 - **JWT + bcrypt** — industry standard auth, passwords hashed, tokens stateless
 - **psycopg2** — connects Python to PostgreSQL
 - **WebSockets** — real-time chat via FastAPI WebSocket support
+- **slowapi** — rate limiting on auth endpoints
+- **Pydantic Settings** — centralized env var management with validation
 - **pytest + httpx** — backend test suite, TestClient hits real routes against a test DB
 - **React + TypeScript via Lovable** — AI-generated frontend, dark UI, mobile-friendly
 - **Railway** — backend hosting, auto-deploys from GitHub
 - **Vercel** — frontend hosting, auto-deploys from GitHub
+- **Sentry** — error tracking on backend, captures unhandled exceptions
+- **Structured logging** — timestamped log lines across all routers via bloc_logger.py
 
 ## Live URLs
 - **Backend:** https://web-production-e808f.up.railway.app
@@ -89,6 +95,13 @@ A private social app for friend groups called "blocs" — users register, log in
 - Why you need a separate test database — tests must never touch prod data
 - How to test negative cases — wrong password, duplicate join, leaving when not a member
 - What `git pull` does and why you run it before starting work in a Codespace
+- What database indexes are and how EXPLAIN ANALYZE shows whether they're being used
+- How cursor-based pagination works — fetch DESC, reverse, use before param for older messages
+- Why Pydantic Settings validates env vars at startup instead of failing later
+- Never name a file logger.py or log.py — conflicts with Python built-ins
+- How ON DELETE CASCADE works and how to add it to an existing FK constraint
+- How role-based access control works — store a role column, check it before destructive actions
+- Why database migrations should always happen before pushing new code
 
 ## How to run it locally
 ```bash
@@ -111,31 +124,27 @@ Make sure your `.env` file has:
 ```
 DB_URL=your_neon_connection_string
 JWT_SECRET=your_secret_key
+ENVIRONMENT=development
+SENTRY_DSN=your_sentry_dsn
 ```
 
 And `.env.test` for running the test suite:
 ```
 DB_URL=your_neon_test_database_connection_string
 JWT_SECRET=test-secret-key
+RATE_LIMIT=1000/minute
 ```
 
 ## Roadmap
 
-### Next session (11 + 12 + 13)
-- Rate limiting on auth endpoints (slowapi)
-- Input validation — max length on usernames, bloc names, messages
-- Refactor main.py into FastAPI routers
-- Sentry error tracking (backend + frontend)
-- Database indexes for performance
-- Pagination on messages and circles
-- Structured logging
-- Pydantic settings instead of raw os.getenv
+### Next session (15)
+- Capacitor wrapper for App Store / TestFlight submission
+- Push notifications groundwork
 
 ### Later
-- Bloc admin controls — kick members, delete a bloc, transfer ownership
+- Transfer admin ownership when admin leaves a bloc
 - Push notifications (pairs with chat)
 - Image uploads for profile pictures (requires Cloudflare R2 or similar)
-- Capacitor wrapper for App Store / TestFlight submission
 - Redis pub/sub for multi-instance WebSocket support
 
 ---
@@ -323,7 +332,6 @@ JWT_SECRET=test-secret-key
 - .env.test config file for test environment
 - conftest.py — pytest fixtures for client, db connection, and autouse table cleanup
 - tests/test_api.py — 13 passing tests covering all core flows
-- Learned when and why to skip frontend testing (Vitest deferred — not enough pure logic yet)
 
 **Learned:**
 - What pytest fixtures are — scope="session" vs per-test, autouse=True
@@ -336,26 +344,78 @@ JWT_SECRET=test-secret-key
 
 **Stuck on:** Nothing — clean session
 
+---
+
 ### Session 11 — Mar 23 2026
 **Built:**
 - Rate limiting on /users/login and /users/register (5/minute via slowapi)
-- Input validation on all Pydantic models using Field min/max lengths (username, email, password, bloc name, invite code)
+- Input validation on all Pydantic models using Field min/max lengths
 - Refactored main.py into routers/users.py, routers/circles.py, routers/messages.py, auth.py, and models.py
-- Sentry error tracking on backend — captures unhandled exceptions with full stack traces, environment-aware (development/production)
-- Fixed test suite broken by rate limiter — solved with RATE_LIMIT env var, set to 1000/minute in .env.test
+- Sentry error tracking on backend
 
 **Learned:**
-- How slowapi rate limiting works and why it needs request: Request as a parameter
-- Why @limiter.limit() captures the limiter reference at import time — swapping the object later doesn't work
-- How to use environment variables to change behaviour between test and production environments
-- How Pydantic Field() validates input before route code even runs
-- How FastAPI routers work — APIRouter() replaces @app, included in main.py with include_router()
-- Why auth and models belong in separate files — routers import from them without circular dependencies
-- What Sentry does — captures unhandled exceptions automatically with full context
-- How traces_sample_rate works — 0.2 means 20% of requests are tracked for performance
+- How slowapi rate limiting works
+- How Pydantic Field() validates input before route code runs
+- How FastAPI routers work
+- What Sentry does
 
 **Stuck on:**
-- Rate limiter not disabled by app.state.limiter.enabled = False — decorators capture limiter reference at import time
-- Codespace timeout mid-session — reconnected via github.com/codespaces
+- Rate limiter not disabled by app.state.limiter.enabled = False
+- Codespace timeout mid-session
 
-**Next session:** Database indexes, pagination on messages and circles, EXPLAIN ANALYZE
+---
+
+### Session 12 — Mar 28 2026
+**Built:**
+- 5 database indexes on messages, user_circles, and circles tables
+- EXPLAIN ANALYZE before/after — confirmed query plan improvement (0.920ms → 0.028ms)
+- Cursor-based pagination on GET /circles/{id}/messages — limit + before params, default 50
+- Membership check added to GET /circles/{id}/messages (403 if not a member)
+
+**Learned:**
+- EXPLAIN ANALYZE shows whether PostgreSQL uses Seq Scan or Index Scan
+- PostgreSQL skips indexes on tiny tables — kicks in automatically at scale
+- Cursor-based pagination uses a before ID instead of page numbers
+- Fetch DESC + reverse = get the N most recent in chronological order
+
+**Stuck on:** Nothing — clean session
+
+---
+
+### Session 13 — Mar 28 2026
+**Built:**
+- config.py with Pydantic Settings — centralizes all env var reads with type validation
+- bloc_logger.py — structured logging with timestamps and log levels
+- Removed all os.getenv() calls from auth.py, main.py, and all routers
+- Log lines on login, register, circle create/join/leave/kick/delete, WebSocket events
+
+**Learned:**
+- Pydantic Settings validates env vars at startup — fails fast if anything is missing
+- Never name a file logger.py or log.py — conflicts with Python built-ins, causes circular imports
+- Structured log format: timestamp, level, module name, message with key=value pairs
+
+**Stuck on:**
+- bloc_logger.py got corrupted with mixed file content during editing — replaced it clean
+
+---
+
+### Session 14 — Mar 28 2026
+**Built:**
+- role column on user_circles — admin or member, defaults to member
+- Creator auto-assigned admin role on bloc creation
+- GET /circles/{id}/members now returns role field
+- DELETE /circles/{id}/members/{user_id} — kick route, admin only
+- DELETE /circles/{id} — delete bloc route, admin only, cascades cleanly
+- Fixed user_circles FK to ON DELETE CASCADE so circle deletion works
+- Admin badge, kick buttons, delete button on Group Info screen — all conditional on role
+- 6 new tests — 19 total, all passing
+
+**Learned:**
+- ON DELETE CASCADE must be on the FK constraint itself — DROP and re-ADD to change it
+- Admin checks are just a role column lookup before the destructive action
+- fetchBloc extracted from useEffect so kick handler can refresh members list
+- Always do database migrations before pushing code to avoid Sentry errors during deploy window
+
+**Stuck on:**
+- test_admin_can_delete_circle failed — missing ON DELETE CASCADE on user_circles FK
+- Sentry caught two real errors during deploy window (column not found, FK violation) — both resolved
