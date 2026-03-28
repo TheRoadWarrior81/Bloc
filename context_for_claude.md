@@ -13,36 +13,47 @@
 ## Backend — completed routes (all working)
 - GET /hello
 - GET /test-db
-- POST /circles (protected) — auto-generates 8-character invite code, adds creator to user_circles
+- POST /circles (protected) — auto-generates 8-character invite code, adds creator to user_circles as admin
 - GET /circles/{id}
-- GET /circles/{id}/members (protected) — returns array directly
+- GET /circles/{id}/members (protected) — returns array with id, username, joined_at, role
 - POST /circles/{id}/join (protected) — handles duplicate joins with try/except
 - DELETE /circles/{id}/leave (protected) — removes user from user_circles
 - POST /circles/join-by-code (protected) — accepts JSON body { invite_code }
+- DELETE /circles/{id}/members/{user_id} (protected) — kick a member, admin only
+- DELETE /circles/{id} (protected) — delete a bloc, admin only, cascades to messages + user_circles
 - POST /users/register — rate limited 5/minute
 - POST /users/login — returns { token, user_id, username }, rate limited 5/minute
 - GET /users/me (protected)
 - PATCH /users/me (protected) — updates username
 - GET /users/me/circles (protected) — returns array directly
-- GET /circles/{id}/messages (protected) — returns message history, ordered by created_at ASC
+- GET /circles/{id}/messages (protected) — returns message history, cursor-based pagination (limit + before params, default limit 50)
 - POST /circles/{id}/messages (protected) — saves a message (HTTP fallback, main path is WebSocket)
 - WebSocket /circles/{circle_id}/ws — real-time chat, JWT auth via query param, broadcasts to all circle members
 
 ## File structure
 - main.py — app setup, middleware, router registration, /hello and /test-db
-- auth.py — get_db(), verify_token(), DB_URL, JWT_SECRET
+- auth.py — get_db(), verify_token(), reads from config.settings
+- config.py — Pydantic Settings, centralizes all env var reads (DB_URL, JWT_SECRET, ENVIRONMENT, RATE_LIMIT, SENTRY_DSN)
 - models.py — all Pydantic models with Field validation
+- bloc_logger.py — structured logging, get_logger(name) returns a configured logger
 - routers/users.py — all /users routes
 - routers/circles.py — all /circles routes
 - routers/messages.py — messages + WebSocket + ConnectionManager
 - conftest.py — pytest fixtures, test DB setup, rate limit disabled via RATE_LIMIT env var
-- tests/test_api.py — 13 passing tests
+- tests/test_api.py — 19 passing tests
 
 ## Database tables
 - users (id, username, email, password_hash)
 - circles (id, name, invite_code, created_at)
-- user_circles (user_id, circle_id, joined_at) — junction table, PRIMARY KEY on both columns
+- user_circles (user_id, circle_id, joined_at, role) — junction table, PRIMARY KEY on both columns, role is 'admin' or 'member'
 - messages (id, circle_id, user_id, content, created_at) — stored in UTC
+
+## Database indexes
+- idx_messages_circle_id — messages(circle_id)
+- idx_messages_created_at — messages(created_at)
+- idx_user_circles_user_id — user_circles(user_id)
+- idx_user_circles_circle_id — user_circles(circle_id)
+- idx_circles_invite_code — circles(invite_code)
 
 ## Auth
 - JWT working, passwords hashed with bcrypt, secrets in .env
@@ -79,7 +90,7 @@
 - src/pages/Register.tsx — async handleSubmit calling real register()
 - src/pages/JoinBloc.tsx — async handleSubmit calling real joinBloc()
 - src/pages/CreateBloc.tsx — name input, calls POST /circles, navigates to new bloc detail on success
-- src/pages/BlocDetail.tsx — group info screen, fetches bloc + members, invite code copy, leave button, You badge, back arrow → chat
+- src/pages/BlocDetail.tsx — group info screen, fetches bloc + members, invite code copy, leave button, kick members (admin only), delete bloc (admin only), admin badge, You badge, back arrow → chat
 - src/pages/MyBlocs.tsx — skeleton loading state, + button top right navigates to /create, refreshes on mount, tapping bloc goes to chat
 - src/pages/Chat.tsx — real-time chat, fetches bloc name + member count for header, tappable header → group info, timestamps on messages, auto-scroll
 - src/pages/Profile.tsx — shows username and email, edit username inline, logout button
@@ -111,7 +122,7 @@
 - Config: .env.test loaded in conftest.py with override=True before app imports
 - Rate limiting disabled in tests via RATE_LIMIT=1000/minute in .env.test
 - conftest.py: session-scoped client and db fixtures, autouse clean_db fixture wipes tables after every test in foreign key safe order (messages → user_circles → circles → users)
-- 13 tests covering: register, login, wrong password, get_me, no token, create circle, creator auto-added as member, join by ID, duplicate join, join by invite code, invalid invite code, leave circle, leave when not a member
+- 19 tests covering: register, login, wrong password, get_me, no token, create circle, creator auto-added as member, join by ID, duplicate join, join by invite code, invalid invite code, leave circle, leave when not a member, creator is admin, member role is member, admin can kick, member cannot kick, admin can delete, member cannot delete
 
 ## Input validation (Pydantic Field)
 - username: min 2, max 30 characters
@@ -128,17 +139,28 @@
 - JWT tokens expire after 7 days
 - Rate limiting on /users/login and /users/register — 5 requests per minute per IP via slowapi
 - Input validation on all models — max lengths enforced by Pydantic Field() before route code runs
+- Admin-only routes for kick and delete — role checked before any destructive action
 
 ## Error tracking
 - Sentry installed on backend — captures unhandled exceptions with full stack traces
 - Environment-aware — development vs production set via ENVIRONMENT env var
 - traces_sample_rate=0.2 — 20% of requests tracked for performance
 
+## Logging
+- bloc_logger.py — structured logging with timestamps and log levels
+- Format: "YYYY-MM-DD HH:MM:SS LEVEL name — message"
+- Log lines on: register, login success/failure, circle create/join/leave/kick/delete, WebSocket connect/disconnect/message
+
+## Pydantic Settings
+- config.py — all env vars read through Settings class
+- Validates at startup — app refuses to start if required vars (DB_URL, JWT_SECRET) are missing
+- Replaces all os.getenv() calls across the codebase
+
 ## Known issues / tech debt
 - My Blocs calls refreshBlocs() on every mount — slightly inefficient but fine for MVP
-- No database indexes yet — planned for Session 12
 - Railway cold starts cause ~7 second delay on first request after inactivity
 - WebSocket ConnectionManager holds connections in memory — won't work across multiple Railway instances, needs Redis pub/sub at scale
+- Always do database migrations before pushing code to avoid Sentry errors during deploy window
 
 ## Key patterns learned
 - FastAPI query param: def route(param: str) — reads from URL ?param=value
@@ -157,19 +179,23 @@
 - Use env vars to change behaviour between test and production (e.g. RATE_LIMIT)
 - FastAPI routers: APIRouter() replaces @app, included in main.py with include_router()
 - Auth and models in separate files — routers import from them without circular dependencies
+- Pydantic Settings validates env vars at startup — fails fast if anything is missing
+- Never name a file logger.py or log.py — conflicts with Python built-ins, causes circular imports
+- Cursor-based pagination: fetch DESC + reverse = N most recent in chronological order
+- Do database migrations before pushing code — avoids Sentry errors during deploy window
+- ON DELETE CASCADE must be on the FK constraint itself — DROP and re-ADD to change it
+- Admin checks are just a role column lookup before the destructive action
+- fetchBloc extracted from useEffect so other handlers can call it to refresh state
 
 ## Session roadmap
-- Session 12 — Database and performance: indexes, pagination on messages and circles, EXPLAIN ANALYZE
-- Session 13 — Observability and DevX: structured logging, Pydantic settings, proper README
-- Session 14 — Bloc admin controls: kick members, delete bloc, role column in user_circles, tests written alongside feature
 - Session 15 — PWA and App Store: Capacitor wrapper, push notifications groundwork, TestFlight
 
 ## Future features (post-MVP)
 - Push notifications (pairs with chat)
 - Image uploads for profile pictures (requires file storage like Cloudflare R2)
-- Bloc admin controls — kick members, delete a bloc, transfer ownership
 - Redis pub/sub for multi-instance WebSocket support
 - Capacitor wrapper for App Store submission
+- Transfer admin ownership when admin leaves a bloc
 
 ## About the developer
 - Beginner — explain things from first principles
