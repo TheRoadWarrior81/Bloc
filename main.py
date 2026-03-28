@@ -1,11 +1,12 @@
 import sentry_sdk
-import os
+from config import settings
 from dotenv import load_dotenv
 load_dotenv()
+
 sentry_sdk.init(
-    dsn=os.getenv("SENTRY_DSN"),
+    dsn=settings.SENTRY_DSN,
     traces_sample_rate=0.2,
-    environment=os.getenv("ENVIRONMENT", "development")
+    environment=settings.ENVIRONMENT
 )
 
 from fastapi import FastAPI
@@ -46,4 +47,3 @@ def test_db():
     result = cursor.fetchone()
     conn.close()
     return {"database": result[0], "user": result[1]}
-

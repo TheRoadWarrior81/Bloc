@@ -7,3 +7,4 @@ python-dotenv==1.0.0
 websockets
 slowapi==0.1.9
 sentry-sdk==2.55.0
+pydantic-settings==2.13.1
