@@ -100,29 +100,42 @@ def join_by_code(body: JoinByCode, user=Depends(verify_token)):
         return {"message": f"Joined circle {circle[0]}"}
     finally:
         conn.close()
-        
-# Check if requester is admin
-cur.execute("SELECT role FROM user_circles WHERE circle_id = %s AND user_id = %s", (circle_id, current_user["id"]))
-row = cur.fetchone()
-if row and row[0] == "admin":
-    # Check if other members exist
-    cur.execute("SELECT COUNT(*) FROM user_circles WHERE circle_id = %s AND user_id != %s", (circle_id, current_user["id"]))
-    count = cur.fetchone()[0]
-    if count > 0:
-        raise HTTPException(status_code=400, detail="Transfer admin to another member before leaving")
+
 @router.delete("/circles/{circle_id}/leave")
 def leave_circle(circle_id: int, user=Depends(verify_token)):
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM user_circles WHERE user_id = %s AND circle_id = %s;",
-        (user["user_id"], circle_id))
+
+    # Check if requester is admin
+    cursor.execute(
+        "SELECT role FROM user_circles WHERE circle_id = %s AND user_id = %s",
+        (circle_id, user["user_id"])
+    )
+    row = cursor.fetchone()
+    if row and row[0] == "admin":
+        # Check if other members exist
+        cursor.execute(
+            "SELECT COUNT(*) FROM user_circles WHERE circle_id = %s AND user_id != %s",
+            (circle_id, user["user_id"])
+        )
+        count = cursor.fetchone()[0]
+        if count > 0:
+            conn.close()
+            raise HTTPException(status_code=400, detail="Transfer admin to another member before leaving")
+
+    # Delete membership
+    cursor.execute(
+        "DELETE FROM user_circles WHERE user_id = %s AND circle_id = %s",
+        (user["user_id"], circle_id)
+    )
     if cursor.rowcount == 0:
         conn.close()
-        logger.warning(f"leave failed — not a member user_id={user['user_id']} circle_id={circle_id}")
+        bloc_logger.warning(f"leave failed — not a member user_id={user['user_id']} circle_id={circle_id}")
         raise HTTPException(status_code=404, detail="You are not in this circle")
+
     conn.commit()
     conn.close()
-    logger.info(f"user left circle user_id={user['user_id']} circle_id={circle_id}")
+    bloc_logger.info(f"user left circle user_id={user['user_id']} circle_id={circle_id}")
     return {"message": "Left circle successfully"}
 
 @router.delete("/circles/{circle_id}/members/{target_user_id}")
