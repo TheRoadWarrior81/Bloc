@@ -2,8 +2,8 @@ import random
 import string
 from fastapi import APIRouter, HTTPException, Depends
 from auth import get_db, verify_token
-from models import CircleCreate, JoinByCode
 from bloc_logger import get_logger
+from models import CircleCreate, JoinByCode, TransferAdminRequest
 
 logger = get_logger("circles")
 router = APIRouter()
@@ -200,24 +200,41 @@ def delete_circle(circle_id: int, user=Depends(verify_token)):
     return {"message": "Bloc deleted"}
 
 @router.patch("/{circle_id}/transfer-admin")
-def transfer_admin(circle_id: int, body: TransferAdminRequest, current_user: dict = Depends(get_current_user), conn=Depends(get_db)):
-    # Check requester is admin
+def transfer_admin(circle_id: int, body: TransferAdminRequest, user=Depends(verify_token)):
+    conn = get_db()
     cur = conn.cursor()
-    cur.execute("SELECT role FROM user_circles WHERE circle_id = %s AND user_id = %s", (circle_id, current_user["id"]))
+
+    # Check requester is admin
+    cur.execute(
+        "SELECT role FROM user_circles WHERE circle_id = %s AND user_id = %s",
+        (circle_id, user["user_id"])
+    )
     row = cur.fetchone()
     if not row or row[0] != "admin":
+        conn.close()
         raise HTTPException(status_code=403, detail="Only admins can transfer ownership")
 
     # Check target is a member
-    cur.execute("SELECT role FROM user_circles WHERE circle_id = %s AND user_id = %s", (circle_id, body.new_admin_id))
+    cur.execute(
+        "SELECT role FROM user_circles WHERE circle_id = %s AND user_id = %s",
+        (circle_id, body.new_admin_id)
+    )
     target = cur.fetchone()
     if not target:
+        conn.close()
         raise HTTPException(status_code=404, detail="Target user is not a member of this bloc")
 
     # Transfer
-    cur.execute("UPDATE user_circles SET role = 'member' WHERE circle_id = %s AND user_id = %s", (circle_id, current_user["id"]))
-    cur.execute("UPDATE user_circles SET role = 'admin' WHERE circle_id = %s AND user_id = %s", (circle_id, body.new_admin_id))
+    cur.execute(
+        "UPDATE user_circles SET role = 'member' WHERE circle_id = %s AND user_id = %s",
+        (circle_id, user["user_id"])
+    )
+    cur.execute(
+        "UPDATE user_circles SET role = 'admin' WHERE circle_id = %s AND user_id = %s",
+        (circle_id, body.new_admin_id)
+    )
     conn.commit()
+    conn.close()
 
-    bloc_logger.info(f"transfer_admin circle_id={circle_id} from={current_user['id']} to={body.new_admin_id}")
+    bloc_logger.info(f"transfer_admin circle_id={circle_id} from={user['user_id']} to={body.new_admin_id}")
     return {"message": "Admin transferred successfully"}
