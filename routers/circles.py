@@ -134,6 +134,15 @@ def leave_circle(circle_id: int, user=Depends(verify_token)):
         raise HTTPException(status_code=404, detail="You are not in this circle")
 
     conn.commit()
+
+    # Auto-delete bloc if no members left
+    cursor.execute("SELECT COUNT(*) FROM user_circles WHERE circle_id = %s", (circle_id,))
+    remaining = cursor.fetchone()[0]
+    if remaining == 0:
+        cursor.execute("DELETE FROM circles WHERE id = %s", (circle_id,))
+        conn.commit()
+        logger.info(f"bloc auto-deleted — no members left circle_id={circle_id}")
+
     conn.close()
     logger.info(f"user left circle user_id={user['user_id']} circle_id={circle_id}")
     return {"message": "Left circle successfully"}
