@@ -130,12 +130,12 @@ def leave_circle(circle_id: int, user=Depends(verify_token)):
     )
     if cursor.rowcount == 0:
         conn.close()
-        bloc_logger.warning(f"leave failed — not a member user_id={user['user_id']} circle_id={circle_id}")
+        logger.warning(f"leave failed — not a member user_id={user['user_id']} circle_id={circle_id}")
         raise HTTPException(status_code=404, detail="You are not in this circle")
 
     conn.commit()
     conn.close()
-    bloc_logger.info(f"user left circle user_id={user['user_id']} circle_id={circle_id}")
+    logger.info(f"user left circle user_id={user['user_id']} circle_id={circle_id}")
     return {"message": "Left circle successfully"}
 
 @router.delete("/circles/{circle_id}/members/{target_user_id}")
@@ -199,7 +199,7 @@ def delete_circle(circle_id: int, user=Depends(verify_token)):
     logger.info(f"circle deleted circle_id={circle_id} by admin_user_id={user['user_id']}")
     return {"message": "Bloc deleted"}
 
-@router.patch("/{circle_id}/transfer-admin")
+@router.patch("/circles/{circle_id}/transfer-admin")
 def transfer_admin(circle_id: int, body: TransferAdminRequest, user=Depends(verify_token)):
     conn = get_db()
     cur = conn.cursor()
@@ -236,5 +236,5 @@ def transfer_admin(circle_id: int, body: TransferAdminRequest, user=Depends(veri
     conn.commit()
     conn.close()
 
-    bloc_logger.info(f"transfer_admin circle_id={circle_id} from={user['user_id']} to={body.new_admin_id}")
+    logger.info(f"transfer_admin circle_id={circle_id} from={user['user_id']} to={body.new_admin_id}")
     return {"message": "Admin transferred successfully"}
