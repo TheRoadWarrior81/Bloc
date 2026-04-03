@@ -18,3 +18,6 @@ class CircleCreate(BaseModel):
 
 class JoinByCode(BaseModel):
     invite_code: str = Field(min_length=1, max_length=20)
+
+class TransferAdminRequest(BaseModel):
+    new_admin_id: int
