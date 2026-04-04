@@ -419,3 +419,57 @@ RATE_LIMIT=1000/minute
 **Stuck on:**
 - test_admin_can_delete_circle failed — missing ON DELETE CASCADE on user_circles FK
 - Sentry caught two real errors during deploy window (column not found, FK violation) — both resolved
+
+### Session 15 — Apr 4 2026
+**Built:** Alembic database migrations
+- Installed Alembic and initialised it in the project root
+- Configured `alembic/env.py` to pull `DB_URL` from Pydantic Settings (`settings.DB_URL`)
+- Created a baseline migration capturing the full current schema — users, circles, user_circles, messages tables with all FK constraints and ON DELETE CASCADE rules
+- Stamped the existing Neon database at head so Alembic knows the schema is already applied
+- Verified the full upgrade/downgrade cycle works cleanly
+
+**Learned:**
+- How Alembic connects to the database via `env.py` and `alembic.ini`
+- Why you stamp an existing database instead of running the baseline migration — the tables already exist
+- How `alembic upgrade head` and `alembic downgrade -1` work
+- Never import from `app.config` if there's no `app` module — match your actual project structure
+- Pydantic Settings preserves casing — `settings.DB_URL` not `settings.db_url`
+- Every future schema change gets its own `alembic revision` file instead of raw SQL
+
+---
+
+### Session 16 — Apr 4 2026
+**Built:** Transfer admin ownership + leave flow hardening
+- New route `PATCH /circles/{id}/transfer-admin` — admin only, demotes current admin to member, promotes target to admin, validates target is actually a member
+- Updated `DELETE /circles/{id}/leave` — blocks admin from leaving if other members exist, returns 400 with clear error message
+- Auto-delete bloc when last member leaves — after the membership row is deleted, checks remaining count and deletes the circle if zero, cascades cleanly to all related data
+- Added `TransferAdminRequest` Pydantic model to `models.py`
+
+**Learned:**
+- How to catch and surface backend error details on the frontend (`err?.detail`)
+- Auto-delete is cleaner UX than leaving ghost blocs with no members
+- Always initialise `conn` and `cursor` at the top of a route before any logic — placing DB calls outside a function causes a `NameError` at import time and crashes the entire app on startup
+- Route decorator prefix matters — `@router.patch("/{id}/transfer-admin")` won't match if all other routes use `/circles/{id}/...`
+- `bloc_logger` is not a global — always use the local `logger` variable initialised with `get_logger()`
+- Sentry catches startup errors during the Railway deploy window — useful for catching migration/code mismatch bugs before they become silent failures
+- Always `git pull` before `git push` in Codespaces to avoid rebase conflicts
+
+**Stuck on:**
+- Three separate Railway crash cycles — loose code outside function body, wrong import name (`get_current_user` vs `verify_token`), `bloc_logger` used directly instead of `logger`
+- Each crash caught via Railway logs and Sentry, fixed and redeployed
+
+---
+
+### Session 17 — Apr 4 2026
+**Built:** Transfer admin UI + leave flow update on frontend
+- Added `ShieldCheck` icon (violet) next to each non-you member in Group Info — visible to admin only
+- `handleTransferAdmin` function — calls `PATCH /circles/{id}/transfer-admin`, refreshes member list on success, confirm dialog before executing
+- Updated `handleLeave` — client-side check before hitting the backend: if user is admin and other members exist, show alert "You must transfer admin to another member before leaving" and return early
+- Both transfer and kick buttons sit in a flex row next to each member row — shield on the left, kick on the right
+- Tested full flow on live frontend: transfer works, leave blocked correctly for admin with members, leave succeeds for members and solo admins
+
+**Learned:**
+- Client-side guards on destructive actions improve UX — no need to wait for a 400 from the server to show a meaningful message
+- Surfacing `err?.detail` from the backend gives users the actual error instead of a generic fallback
+- A solo admin leaving is valid and correct — the auto-delete on the backend handles it cleanly
+- Two buttons in a member row need a flex container with a gap — `ml-auto` on the container, not on individual buttons
