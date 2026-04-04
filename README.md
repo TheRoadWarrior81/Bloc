@@ -420,7 +420,7 @@ RATE_LIMIT=1000/minute
 - test_admin_can_delete_circle failed — missing ON DELETE CASCADE on user_circles FK
 - Sentry caught two real errors during deploy window (column not found, FK violation) — both resolved
 
-### Session 15 — Apr 4 2026
+### Session 15 — Apr 3 2026
 **Built:** Alembic database migrations
 - Installed Alembic and initialised it in the project root
 - Configured `alembic/env.py` to pull `DB_URL` from Pydantic Settings (`settings.DB_URL`)
@@ -438,7 +438,7 @@ RATE_LIMIT=1000/minute
 
 ---
 
-### Session 16 — Apr 4 2026
+### Session 16 — Apr 3 2026
 **Built:** Transfer admin ownership + leave flow hardening
 - New route `PATCH /circles/{id}/transfer-admin` — admin only, demotes current admin to member, promotes target to admin, validates target is actually a member
 - Updated `DELETE /circles/{id}/leave` — blocks admin from leaving if other members exist, returns 400 with clear error message
@@ -460,7 +460,7 @@ RATE_LIMIT=1000/minute
 
 ---
 
-### Session 17 — Apr 4 2026
+### Session 17 — Apr 3 2026
 **Built:** Transfer admin UI + leave flow update on frontend
 - Added `ShieldCheck` icon (violet) next to each non-you member in Group Info — visible to admin only
 - `handleTransferAdmin` function — calls `PATCH /circles/{id}/transfer-admin`, refreshes member list on success, confirm dialog before executing
