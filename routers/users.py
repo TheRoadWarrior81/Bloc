@@ -1,3 +1,4 @@
+import uuid
 import bcrypt
 import jwt
 from datetime import datetime, timedelta
@@ -34,7 +35,6 @@ def register(request: Request, body: UserRegister):
         return {"id": new_user[0], "username": new_user[1], "email": new_user[2]}
     except Exception as e:
         conn.rollback()
-        # psycopg2 error code 23505 = unique constraint violation
         if hasattr(e, 'pgcode') and e.pgcode == '23505':
             raise HTTPException(status_code=409, detail="An account with this email already exists")
         logger.error(f"register failed: {e}")
@@ -64,8 +64,15 @@ def login(request: Request, body: UserLogin):
         logger.warning(f"login failed — wrong password user_id={row[0]}")
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
+    # jti (JWT ID) is a unique identifier for this specific token
+    # stored in revoked_tokens table on logout to invalidate it server-side
     token = jwt.encode(
-        {"user_id": row[0], "username": row[1], "exp": datetime.utcnow() + timedelta(days=7)},
+        {
+            "user_id": row[0],
+            "username": row[1],
+            "exp": datetime.utcnow() + timedelta(days=7),
+            "jti": str(uuid.uuid4()),
+        },
         settings.JWT_SECRET,
         algorithm="HS256"
     )
