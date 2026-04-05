@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, Depends, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from auth import get_db, verify_token
+from auth import get_db, verify_token, security
 from config import settings
 from models import UserRegister, UserLogin, UserUpdate
 from bloc_logger import get_logger
@@ -64,8 +64,6 @@ def login(request: Request, body: UserLogin):
         logger.warning(f"login failed — wrong password user_id={row[0]}")
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    # jti (JWT ID) is a unique identifier for this specific token
-    # stored in revoked_tokens table on logout to invalidate it server-side
     token = jwt.encode(
         {
             "user_id": row[0],
@@ -135,3 +133,44 @@ def get_my_circles(user=Depends(verify_token)):
         conn.close()
 
     return [{"id": r[0], "name": r[1], "invite_code": r[2], "joined_at": r[3]} for r in rows]
+
+
+@router.post("/users/logout")
+def logout(credentials=Depends(security)):
+    token = credentials.credentials
+    try:
+        payload = jwt.decode(
+            token,
+            settings.JWT_SECRET,
+            algorithms=["HS256"],
+            options={"verify_exp": False}
+        )
+    except jwt.InvalidTokenError:
+        # Malformed token — nothing to blocklist, treat as logged out
+        return {"message": "Logged out"}
+
+    jti = payload.get("jti")
+    exp = payload.get("exp")
+
+    if jti and exp:
+        expires_at = datetime.utcfromtimestamp(exp)
+        conn = get_db()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                INSERT INTO revoked_tokens (jti, expires_at)
+                VALUES (%s, %s)
+                ON CONFLICT (jti) DO NOTHING
+                """,
+                (jti, expires_at)
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        finally:
+            cur.close()
+            conn.close()
+
+    logger.info(f"user logged out jti={jti}")
+    return {"message": "Logged out"}
