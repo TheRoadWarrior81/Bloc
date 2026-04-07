@@ -38,10 +38,18 @@ def create_circle(circle: CircleCreate, user=Depends(verify_token)):
 
 
 @router.get("/circles/{circle_id}")
-def get_circle(circle_id: int):
+def get_circle(circle_id: int, user=Depends(verify_token)):
     conn = get_db()
     cursor = conn.cursor()
     try:
+        cursor.execute(
+            "SELECT 1 FROM user_circles WHERE circle_id = %s AND user_id = %s;",
+            (circle_id, user["user_id"])
+        )
+        if not cursor.fetchone():
+            logger.warning(f"circle fetch denied — not a member user_id={user['user_id']} circle_id={circle_id}")
+            raise HTTPException(status_code=403, detail="Not a member of this circle")
+
         cursor.execute(
             "SELECT id, name, invite_code, created_at FROM circles WHERE id = %s;",
             (circle_id,)
@@ -61,10 +69,13 @@ def get_circle_members(circle_id: int, user=Depends(verify_token)):
     conn = get_db()
     cursor = conn.cursor()
     try:
-        cursor.execute("SELECT id FROM circles WHERE id = %s;", (circle_id,))
+        cursor.execute(
+            "SELECT 1 FROM user_circles WHERE circle_id = %s AND user_id = %s;",
+            (circle_id, user["user_id"])
+        )
         if not cursor.fetchone():
-            logger.warning(f"members fetch failed — circle not found circle_id={circle_id}")
-            raise HTTPException(status_code=404, detail="Circle not found")
+            logger.warning(f"members fetch denied — not a member user_id={user['user_id']} circle_id={circle_id}")
+            raise HTTPException(status_code=403, detail="Not a member of this circle")
         cursor.execute("""
             SELECT users.id, users.username, user_circles.joined_at, user_circles.role
             FROM users
