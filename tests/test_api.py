@@ -125,6 +125,46 @@ def test_join_invalid_invite_code(client):
     res = client.post("/circles/join-by-code", json={"invite_code": "BADCODE1"}, headers=auth_headers(token))
     assert res.status_code == 404
 
+def test_non_member_cannot_get_circle(client):
+    token_a, _ = register_and_login(client, "userA", "a@example.com")
+    circle_res = client.post("/circles", json={"name": "Test Bloc"}, headers=auth_headers(token_a))
+    circle_id = circle_res.json()["id"]
+
+    token_b, _ = register_and_login(client, "userB", "b@example.com")
+    res = client.get(f"/circles/{circle_id}", headers=auth_headers(token_b))
+    assert res.status_code == 403
+
+def test_non_member_cannot_get_members(client):
+    token_a, _ = register_and_login(client, "userA", "a@example.com")
+    circle_res = client.post("/circles", json={"name": "Test Bloc"}, headers=auth_headers(token_a))
+    circle_id = circle_res.json()["id"]
+
+    token_b, _ = register_and_login(client, "userB", "b@example.com")
+    res = client.get(f"/circles/{circle_id}/members", headers=auth_headers(token_b))
+    assert res.status_code == 403
+
+def test_non_member_cannot_send_messages(client):
+    token_a, _ = register_and_login(client, "userA", "a@example.com")
+    circle_res = client.post("/circles", json={"name": "Test Bloc"}, headers=auth_headers(token_a))
+    circle_id = circle_res.json()["id"]
+
+    token_b, _ = register_and_login(client, "userB", "b@example.com")
+    res = client.post(
+        f"/circles/{circle_id}/messages",
+        json={"content": "hello"},
+        headers=auth_headers(token_b),
+    )
+    assert res.status_code == 403
+
+def test_non_member_cannot_get_messages(client):
+    token_a, _ = register_and_login(client, "userA", "a@example.com")
+    circle_res = client.post("/circles", json={"name": "Test Bloc"}, headers=auth_headers(token_a))
+    circle_id = circle_res.json()["id"]
+
+    token_b, _ = register_and_login(client, "userB", "b@example.com")
+    res = client.get(f"/circles/{circle_id}/messages", headers=auth_headers(token_b))
+    assert res.status_code == 403
+
 def test_leave_circle(client):
     token_a, _ = register_and_login(client, "userA", "a@example.com")
     circle_res = client.post("/circles", json={"name": "Test Bloc"}, headers=auth_headers(token_a))
@@ -217,8 +257,8 @@ def test_admin_can_delete_circle(client):
     assert res.status_code == 200
 
     # Circle should no longer exist
-    get_res = client.get(f"/circles/{circle_id}")
-    assert get_res.status_code == 404
+    get_res = client.get(f"/circles/{circle_id}", headers=auth_headers(token))
+    assert get_res.status_code == 403
 
 def test_member_cannot_delete_circle(client):
     """Non-admin should get 403 when trying to delete the bloc."""

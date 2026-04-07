@@ -52,6 +52,14 @@ def send_message(circle_id: int, body: dict, user=Depends(verify_token)):
     cur = conn.cursor()
     try:
         cur.execute(
+            "SELECT 1 FROM user_circles WHERE circle_id = %s AND user_id = %s",
+            (circle_id, user["user_id"])
+        )
+        if not cur.fetchone():
+            logger.warning(f"message send denied — not a member user_id={user['user_id']} circle_id={circle_id}")
+            raise HTTPException(status_code=403, detail="Not a member of this circle")
+
+        cur.execute(
             "INSERT INTO messages (circle_id, user_id, content) VALUES (%s, %s, %s) RETURNING id, created_at",
             (circle_id, user["user_id"], content)
         )
