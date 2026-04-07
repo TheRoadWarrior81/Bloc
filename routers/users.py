@@ -135,6 +135,55 @@ def get_my_circles(user=Depends(verify_token)):
     return [{"id": r[0], "name": r[1], "invite_code": r[2], "joined_at": r[3]} for r in rows]
 
 
+@router.get("/users/me/circles/full")
+def get_my_circles_full(user=Depends(verify_token)):
+    """
+    Returns all blocs the user is in, with members nested.
+    Single query instead of 1 + N — eliminates the N+1 problem
+    in BlocContext where we fetched members separately per bloc.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT
+                c.id,
+                c.name,
+                c.invite_code,
+                u.id   AS member_id,
+                u.username,
+                uc.role
+            FROM circles c
+            JOIN user_circles uc_me ON c.id = uc_me.circle_id
+                AND uc_me.user_id = %s
+            JOIN user_circles uc ON c.id = uc.circle_id
+            JOIN users u ON uc.user_id = u.id
+            ORDER BY c.id, u.id;
+        """, (user["user_id"],))
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
+
+    # Collapse flat rows into nested structure: { circle_id: { ...circle, members: [] } }
+    circles: dict = {}
+    for row in rows:
+        circle_id, name, invite_code, member_id, username, role = row
+        if circle_id not in circles:
+            circles[circle_id] = {
+                "id": circle_id,
+                "name": name,
+                "invite_code": invite_code,
+                "members": []
+            }
+        circles[circle_id]["members"].append({
+            "id": member_id,
+            "username": username,
+            "role": role,
+        })
+
+    return list(circles.values())
+
+
 @router.post("/users/logout")
 def logout(credentials=Depends(security)):
     token = credentials.credentials
@@ -146,7 +195,6 @@ def logout(credentials=Depends(security)):
             options={"verify_exp": False}
         )
     except jwt.InvalidTokenError:
-        # Malformed token — nothing to blocklist, treat as logged out
         return {"message": "Logged out"}
 
     jti = payload.get("jti")
