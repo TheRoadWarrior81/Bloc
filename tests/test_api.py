@@ -156,6 +156,7 @@ def test_non_member_cannot_send_messages(client):
     )
     assert res.status_code == 403
 
+<<<<<<< codex/conduct-detailed-code-review-igb5gg
 def test_non_member_cannot_get_messages(client):
     token_a, _ = register_and_login(client, "userA", "a@example.com")
     circle_res = client.post("/circles", json={"name": "Test Bloc"}, headers=auth_headers(token_a))
@@ -165,6 +166,8 @@ def test_non_member_cannot_get_messages(client):
     res = client.get(f"/circles/{circle_id}/messages", headers=auth_headers(token_b))
     assert res.status_code == 403
 
+=======
+>>>>>>> main
 def test_leave_circle(client):
     token_a, _ = register_and_login(client, "userA", "a@example.com")
     circle_res = client.post("/circles", json={"name": "Test Bloc"}, headers=auth_headers(token_a))
