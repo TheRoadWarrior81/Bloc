@@ -65,13 +65,3 @@ app.include_router(messages.router)
 @app.get("/hello")
 def hello():
     return {"message": "hello world"}
-
-@app.get("/test-db")
-def test_db():
-    from auth import get_db
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT current_database(), current_user;")
-    result = cursor.fetchone()
-    conn.close()
-    return {"database": result[0], "user": result[1]}
