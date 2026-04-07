@@ -1,5 +1,7 @@
 import random
 import string
+import psycopg2
+from psycopg2 import errors as pg_errors
 from fastapi import APIRouter, HTTPException, Depends
 from auth import get_db, verify_token
 from bloc_logger import get_logger
@@ -29,7 +31,10 @@ def create_circle(circle: CircleCreate, user=Depends(verify_token)):
         conn.commit()
         logger.info(f"circle created circle_id={new_circle[0]} user_id={user['user_id']}")
         return {"id": new_circle[0], "name": new_circle[1], "invite_code": new_circle[2]}
-    except Exception as e:
+    except pg_errors.UniqueViolation:
+        conn.rollback()
+        raise HTTPException(status_code=409, detail="Invite code already exists")
+    except psycopg2.Error as e:
         conn.rollback()
         logger.error(f"create_circle failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to create bloc")
@@ -105,10 +110,14 @@ def join_circle(circle_id: int, user=Depends(verify_token)):
             )
             conn.commit()
             logger.info(f"user joined circle user_id={user['user_id']} circle_id={circle_id}")
-        except Exception:
+        except pg_errors.UniqueViolation:
             conn.rollback()
             logger.warning(f"join failed — already a member user_id={user['user_id']} circle_id={circle_id}")
             raise HTTPException(status_code=400, detail="Already in this circle")
+        except psycopg2.Error as e:
+            conn.rollback()
+            logger.error(f"join_circle failed: {e}")
+            raise HTTPException(status_code=500, detail="Failed to join circle")
         return {"message": f"Joined circle {circle_id}"}
     finally:
         conn.close()
@@ -131,10 +140,14 @@ def join_by_code(body: JoinByCode, user=Depends(verify_token)):
             )
             conn.commit()
             logger.info(f"user joined by code user_id={user['user_id']} circle_id={circle[0]}")
-        except Exception:
+        except pg_errors.UniqueViolation:
             conn.rollback()
             logger.warning(f"join-by-code failed — already a member user_id={user['user_id']} circle_id={circle[0]}")
             raise HTTPException(status_code=400, detail="Already in this circle")
+        except psycopg2.Error as e:
+            conn.rollback()
+            logger.error(f"join_by_code failed: {e}")
+            raise HTTPException(status_code=500, detail="Failed to join circle")
         return {"message": f"Joined circle {circle[0]}"}
     finally:
         conn.close()
