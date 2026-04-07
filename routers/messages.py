@@ -70,6 +70,9 @@ def send_message(circle_id: int, body: dict, user=Depends(verify_token)):
             "id": row[0], "circle_id": circle_id, "user_id": user["user_id"],
             "username": user["username"], "content": content, "created_at": str(row[1])
         }
+    except HTTPException:
+        conn.rollback()
+        raise
     except Exception as e:
         conn.rollback()
         logger.error(f"send_message failed: {e}")
