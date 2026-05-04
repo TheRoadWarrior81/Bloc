@@ -182,7 +182,13 @@ ERROR  request - method=GET path=/circles/99/messages status=500 duration=8.1ms
 
 ## Known Limitations
 
-- WebSocket auth passes the JWT as a query parameter — visible in server logs. Mitigation: short-lived handshake tokens would solve this but add complexity.
-- No connection pooling — each request opens a new psycopg2 connection. Under sustained load this would become a bottleneck. PgBouncer or SQLAlchemy's pool would be the fix.
-- RLS (Row Level Security) is not enforced at the database level — access control is handled entirely at the application layer via route guards. The database user is `neondb_owner` which bypasses RLS policies.
-- Single Railway instance — WebSocket connections are held in memory. A second instance would not share connection state. Redis pub/sub would be required for horizontal scaling.
+### Row-Level Security (RLS)
+Access control is enforced entirely at the application layer via route guards and
+membership checks. The database user (`neondb_owner`) has superuser-equivalent
+privileges and bypasses any RLS policies defined on tables.
+
+**Production path:** Create a restricted role (`bloc_app`) with INSERT/SELECT/UPDATE
+only on required tables, define RLS policies that bind `circle_id` and `user_id`
+to `current_setting('app.current_user_id')`, and set that variable at the start of
+each request. This adds defence-in-depth so a bypass in the application layer cannot
+expose another user's data at the database level.
