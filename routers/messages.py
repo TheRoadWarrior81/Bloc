@@ -1,6 +1,7 @@
+import asyncio
 import jwt
 from fastapi import APIRouter, HTTPException, Depends, WebSocket, WebSocketDisconnect
-from auth import get_db, verify_token
+from auth import get_db, release_db, verify_token
 from config import settings
 from bloc_logger import get_logger
 
@@ -23,7 +24,7 @@ class ConnectionManager:
             try:
                 self.active_connections[circle_id].remove(websocket)
             except ValueError:
-                pass  # already removed, safe to ignore
+                pass
 
     async def broadcast(self, circle_id: int, message: dict):
         if circle_id in self.active_connections:
@@ -33,7 +34,6 @@ class ConnectionManager:
                     await connection.send_json(message)
                 except Exception:
                     dead.append(connection)
-            # Clean up any connections that died mid-broadcast
             for connection in dead:
                 self.disconnect(circle_id, connection)
 
@@ -79,7 +79,7 @@ def send_message(circle_id: int, body: dict, user=Depends(verify_token)):
         raise HTTPException(status_code=500, detail="Failed to send message")
     finally:
         cur.close()
-        conn.close()
+        release_db(conn)                  # ← return to pool
 
 
 @router.get("/circles/{circle_id}/messages")
@@ -92,7 +92,6 @@ def get_messages(
     conn = get_db()
     cur = conn.cursor()
     try:
-        # Membership check
         cur.execute(
             "SELECT 1 FROM user_circles WHERE circle_id = %s AND user_id = %s",
             (circle_id, user["user_id"])
@@ -122,7 +121,6 @@ def get_messages(
 
         rows = cur.fetchall()
         rows.reverse()
-
         return [
             {
                 "id": r[0], "circle_id": r[1], "user_id": r[2],
@@ -137,21 +135,54 @@ def get_messages(
         raise HTTPException(status_code=500, detail="Failed to fetch messages")
     finally:
         cur.close()
-        conn.close()
+        release_db(conn)                  # ← return to pool
 
 
 @router.websocket("/circles/{circle_id}/ws")
-async def websocket_endpoint(circle_id: int, websocket: WebSocket, token: str):
-    # Verify JWT before accepting the connection
+async def websocket_endpoint(circle_id: int, websocket: WebSocket):
+    # Step 1: accept the raw connection — no token in the URL
+    await websocket.accept()
+
+    # Step 2: wait up to 10 seconds for the client to send an auth frame.
+    # Expected shape: {"type": "auth", "token": "<jwt>"}
+    # If it doesn't arrive in time, or is malformed, close immediately.
     try:
-        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=["HS256"])
-        user = payload
-    except jwt.InvalidTokenError:
-        logger.warning(f"websocket rejected — invalid token circle_id={circle_id}")
+        auth_data = await asyncio.wait_for(websocket.receive_json(), timeout=10.0)
+    except (asyncio.TimeoutError, Exception):
+        logger.warning(f"websocket closed — no auth frame received circle_id={circle_id}")
         await websocket.close(code=1008)
         return
 
-    # Verify user is a member of this circle
+    if auth_data.get("type") != "auth":
+        logger.warning(f"websocket closed — first frame was not auth circle_id={circle_id}")
+        await websocket.close(code=1008)
+        return
+
+    # Step 3: validate the JWT from the auth frame
+    token = auth_data.get("token", "")
+    try:
+        user = jwt.decode(token, settings.JWT_SECRET, algorithms=["HS256"])
+    except jwt.InvalidTokenError:
+        logger.warning(f"websocket closed — invalid token circle_id={circle_id}")
+        await websocket.close(code=1008)
+        return
+
+    # Step 4: check revoked tokens (same as verify_token in auth.py)
+    jti = user.get("jti")
+    if jti:
+        conn = get_db()
+        cur = conn.cursor()
+        try:
+            cur.execute("SELECT 1 FROM revoked_tokens WHERE jti = %s", (jti,))
+            if cur.fetchone():
+                logger.warning(f"websocket closed — revoked token user_id={user.get('user_id')} circle_id={circle_id}")
+                await websocket.close(code=1008)
+                return
+        finally:
+            cur.close()
+            release_db(conn)
+
+    # Step 5: membership check
     conn = get_db()
     cur = conn.cursor()
     try:
@@ -160,15 +191,15 @@ async def websocket_endpoint(circle_id: int, websocket: WebSocket, token: str):
             (circle_id, user["user_id"])
         )
         if not cur.fetchone():
-            logger.warning(f"websocket rejected — not a member user_id={user['user_id']} circle_id={circle_id}")
+            logger.warning(f"websocket closed — not a member user_id={user['user_id']} circle_id={circle_id}")
             await websocket.close(code=1008)
             return
     finally:
         cur.close()
-        conn.close()
+        release_db(conn)
 
     logger.info(f"websocket connected user_id={user['user_id']} circle_id={circle_id}")
-    await manager.connect(circle_id, websocket)
+    manager.active_connections.setdefault(circle_id, []).append(websocket)
 
     try:
         while True:
@@ -196,7 +227,7 @@ async def websocket_endpoint(circle_id: int, websocket: WebSocket, token: str):
                 logger.error(f"websocket message insert failed: {e}")
             finally:
                 cur.close()
-                conn.close()
+                release_db(conn)          # ← return to pool
 
     except WebSocketDisconnect:
         manager.disconnect(circle_id, websocket)

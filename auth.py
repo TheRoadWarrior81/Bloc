@@ -1,14 +1,27 @@
 import jwt
 import psycopg2
+import psycopg2.pool
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer
 from config import settings
 
 security = HTTPBearer()
 
+# One pool shared across all requests.
+# minconn=2 keeps warm connections ready; maxconn=10 prevents overwhelming Neon.
+_pool = psycopg2.pool.ThreadedConnectionPool(
+    minconn=2,
+    maxconn=10,
+    dsn=settings.DB_URL
+)
 
 def get_db():
-    return psycopg2.connect(settings.DB_URL)
+    """Borrow a connection from the pool."""
+    return _pool.getconn()
+
+def release_db(conn):
+    """Return a connection to the pool instead of closing it."""
+    _pool.putconn(conn)
 
 
 def verify_token(credentials=Depends(security)):
@@ -16,7 +29,6 @@ def verify_token(credentials=Depends(security)):
         token = credentials.credentials
         payload = jwt.decode(token, settings.JWT_SECRET, algorithms=["HS256"])
 
-        # Check if this token has been revoked (e.g. user logged out)
         jti = payload.get("jti")
         if jti:
             conn = get_db()
@@ -30,7 +42,7 @@ def verify_token(credentials=Depends(security)):
                     raise HTTPException(status_code=401, detail="Token has been revoked")
             finally:
                 cur.close()
-                conn.close()
+                release_db(conn)          # ← return to pool, not close
 
         return payload
     except HTTPException:
