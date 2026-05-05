@@ -12,12 +12,22 @@ security = HTTPBearer()
 _pool = psycopg2.pool.ThreadedConnectionPool(
     minconn=2,
     maxconn=10,
-    dsn=settings.DB_URL
+    dsn=settings.DB_URL,
+    keepalives=1,
+    keepalives_idle=30,
+    keepalives_interval=10,
+    keepalives_count=5
 )
 
 def get_db():
-    """Borrow a connection from the pool."""
-    return _pool.getconn()
+    conn = _pool.getconn()
+    try:
+        conn.cursor().execute("SELECT 1")
+    except Exception:
+        # Connection is dead — discard it and get a fresh one
+        _pool.putconn(conn, close=True)
+        conn = psycopg2.connect(settings.DB_URL)
+    return conn
 
 def release_db(conn):
     """Return a connection to the pool instead of closing it."""
