@@ -380,3 +380,50 @@ A session-by-session record of what was built, learned, and debugged.
 - Collapsing flat JOIN rows into nested structure in Python using a dict keyed by ID
 - Middleware goes before routers to catch all requests including rate limit 429s
 - Known limitations section signals engineering maturity — include what you haven't done and why
+
+## Session 21 — May 5, 2026
+
+### Focus
+Production hardening + AI foundation (pgvector + Gemini embeddings)
+
+### What was done
+
+**Connection pooling**
+Replaced per-request `psycopg2.connect()` with `ThreadedConnectionPool` (min=1, max=5).
+Added `release_db()` to return connections to pool instead of closing them.
+Updated all route handlers and `verify_token` to use `release_db`.
+
+**WebSocket auth**
+Removed JWT from query parameter (visible in server logs).
+Implemented first-message auth: client connects, immediately sends
+`{"type": "auth", "token": "..."}` as first frame. Server validates before
+processing any messages. Added revoked token (jti) check to WebSocket path,
+consistent with REST auth.
+
+**pgvector setup**
+Enabled vector extension on Neon via SQL editor — Alembic + PgBouncer pooler
+connection silently drops DDL in transaction mode. Created `message_embeddings`
+table (`vector(3072)`, ivfflat index) and `ai_logs` table. Added `DB_URL_DIRECT`
+for Alembic-only use (direct connection, bypasses pooler).
+
+**Gemini embedding service**
+Installed `google-genai` SDK. Created `services/embeddings.py` using
+`gemini-embedding-001` (3072 dimensions). Verified end to end: embedding
+generated, stored in `message_embeddings`, latency logged to `ai_logs`.
+
+**Production incident**
+Railway `DB_URL` was pointing to wrong Neon database (`bloc_test` instead of
+`neondb`). Fixed in Railway environment variables. Also removed
+`channel_binding=require` which was causing psycopg2 connection failures.
+Neon password was rotated mid-session — updated across `.env` and Railway.
+
+### Issues encountered
+- `CREATE EXTENSION vector` silently fails inside Alembic transaction on Neon
+  pooler — solved by running manually in Neon SQL editor
+- `gemini-embedding-001` produces 3072-dim vectors not 768 — updated table schema
+- Pool exhaustion from bad connection validation fallback in `get_db()` — fixed
+- Neon password rotation caused Railway auth failures — rotated and redeployed
+
+### Current state
+Production stable. All tables in place. Embedding service verified locally and
+in production. Ready for Day 2 semantic search endpoint.
