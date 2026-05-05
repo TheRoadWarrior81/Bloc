@@ -10,8 +10,8 @@ security = HTTPBearer()
 # One pool shared across all requests.
 # minconn=2 keeps warm connections ready; maxconn=10 prevents overwhelming Neon.
 _pool = psycopg2.pool.ThreadedConnectionPool(
-    minconn=2,
-    maxconn=10,
+    minconn=1,
+    maxconn=5,
     dsn=settings.DB_URL,
     keepalives=1,
     keepalives_idle=30,
@@ -22,11 +22,15 @@ _pool = psycopg2.pool.ThreadedConnectionPool(
 def get_db():
     conn = _pool.getconn()
     try:
-        conn.cursor().execute("SELECT 1")
+        cur = conn.cursor()
+        cur.execute("SELECT 1")
+        cur.close()
     except Exception:
-        # Connection is dead — discard it and get a fresh one
-        _pool.putconn(conn, close=True)
-        conn = psycopg2.connect(settings.DB_URL)
+        try:
+            _pool.putconn(conn, close=True)
+        except Exception:
+            pass
+        conn = _pool.getconn()
     return conn
 
 def release_db(conn):
