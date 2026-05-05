@@ -6,6 +6,8 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     RATE_LIMIT: str = "5/minute"
     SENTRY_DSN: str = ""
+    GEMINI_API_KEY: str = ""
+    DB_URL_DIRECT: str = ""
 
     class Config:
         env_file = ".env"
