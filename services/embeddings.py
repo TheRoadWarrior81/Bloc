@@ -77,7 +77,7 @@ def search_messages(query: str, circle_id: int, limit: int = 10) -> list[dict]:
                 SELECT
                     m.id,
                     m.content,
-                    m.sender_id,
+                    m.user_id,
                     m.created_at,
                     me.embedding <=> %s::vector AS distance
                 FROM message_embeddings me
@@ -93,7 +93,7 @@ def search_messages(query: str, circle_id: int, limit: int = 10) -> list[dict]:
                 {
                     "id": row[0],
                     "content": row[1],
-                    "sender_id": row[2],
+                    "user_id": row[2],
                     "created_at": row[3].isoformat(),
                     "score": round(1 - float(row[4]), 4),
                 }
