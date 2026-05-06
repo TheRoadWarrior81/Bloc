@@ -1,9 +1,10 @@
 import asyncio
 import jwt
-from fastapi import APIRouter, HTTPException, Depends, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Depends, WebSocket, WebSocketDisconnect, BackgroundTasks
 from auth import get_db, release_db, verify_token
 from config import settings
 from bloc_logger import get_logger
+from services.embeddings import embed_message
 
 logger = get_logger("messages")
 router = APIRouter()
@@ -42,7 +43,7 @@ manager = ConnectionManager()
 
 
 @router.post("/circles/{circle_id}/messages")
-def send_message(circle_id: int, body: dict, user=Depends(verify_token)):
+def send_message(circle_id: int, body: dict, background_tasks: BackgroundTasks, user=Depends(verify_token)):
     content = body.get("content", "").strip()
     if not content:
         raise HTTPException(status_code=400, detail="Message cannot be empty")
@@ -65,6 +66,7 @@ def send_message(circle_id: int, body: dict, user=Depends(verify_token)):
         )
         row = cur.fetchone()
         conn.commit()
+        background_tasks.add_task(embed_message, message_id=row[0], content=content)
         logger.info(f"message sent circle_id={circle_id} user_id={user['user_id']} msg_id={row[0]}")
         return {
             "id": row[0], "circle_id": circle_id, "user_id": user["user_id"],
@@ -79,7 +81,7 @@ def send_message(circle_id: int, body: dict, user=Depends(verify_token)):
         raise HTTPException(status_code=500, detail="Failed to send message")
     finally:
         cur.close()
-        release_db(conn)                  # ← return to pool
+        release_db(conn)
 
 
 @router.get("/circles/{circle_id}/messages")
@@ -135,17 +137,13 @@ def get_messages(
         raise HTTPException(status_code=500, detail="Failed to fetch messages")
     finally:
         cur.close()
-        release_db(conn)                  # ← return to pool
+        release_db(conn)
 
 
 @router.websocket("/circles/{circle_id}/ws")
 async def websocket_endpoint(circle_id: int, websocket: WebSocket):
-    # Step 1: accept the raw connection — no token in the URL
     await websocket.accept()
 
-    # Step 2: wait up to 10 seconds for the client to send an auth frame.
-    # Expected shape: {"type": "auth", "token": "<jwt>"}
-    # If it doesn't arrive in time, or is malformed, close immediately.
     try:
         auth_data = await asyncio.wait_for(websocket.receive_json(), timeout=10.0)
     except (asyncio.TimeoutError, Exception):
@@ -158,7 +156,6 @@ async def websocket_endpoint(circle_id: int, websocket: WebSocket):
         await websocket.close(code=1008)
         return
 
-    # Step 3: validate the JWT from the auth frame
     token = auth_data.get("token", "")
     try:
         user = jwt.decode(token, settings.JWT_SECRET, algorithms=["HS256"])
@@ -167,7 +164,6 @@ async def websocket_endpoint(circle_id: int, websocket: WebSocket):
         await websocket.close(code=1008)
         return
 
-    # Step 4: check revoked tokens (same as verify_token in auth.py)
     jti = user.get("jti")
     if jti:
         conn = get_db()
@@ -182,7 +178,6 @@ async def websocket_endpoint(circle_id: int, websocket: WebSocket):
             cur.close()
             release_db(conn)
 
-    # Step 5: membership check
     conn = get_db()
     cur = conn.cursor()
     try:
@@ -217,6 +212,7 @@ async def websocket_endpoint(circle_id: int, websocket: WebSocket):
                 )
                 row = cur.fetchone()
                 conn.commit()
+                asyncio.get_event_loop().run_in_executor(None, embed_message, row[0], content)
                 logger.info(f"websocket message circle_id={circle_id} user_id={user['user_id']} msg_id={row[0]}")
                 await manager.broadcast(circle_id, {
                     "id": row[0], "circle_id": circle_id, "user_id": user["user_id"],
@@ -227,7 +223,7 @@ async def websocket_endpoint(circle_id: int, websocket: WebSocket):
                 logger.error(f"websocket message insert failed: {e}")
             finally:
                 cur.close()
-                release_db(conn)          # ← return to pool
+                release_db(conn)
 
     except WebSocketDisconnect:
         manager.disconnect(circle_id, websocket)

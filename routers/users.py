@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, Depends, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from auth import get_db, verify_token, security
+from auth import get_db, release_db, verify_token, security
 from config import settings
 from models import UserRegister, UserLogin, UserUpdate
 from bloc_logger import get_logger
@@ -40,7 +40,7 @@ def register(request: Request, body: UserRegister):
         logger.error(f"register failed: {e}")
         raise HTTPException(status_code=500, detail="Registration failed")
     finally:
-        conn.close()
+        release_db(conn)
 
 
 @router.post("/users/login")
@@ -55,7 +55,7 @@ def login(request: Request, body: UserLogin):
         )
         row = cursor.fetchone()
     finally:
-        conn.close()
+        release_db(conn)
 
     if not row:
         logger.warning(f"login failed — email not found {body.email}")
@@ -89,7 +89,7 @@ def get_me(user=Depends(verify_token)):
         )
         row = cursor.fetchone()
     finally:
-        conn.close()
+        release_db(conn)
 
     if not row:
         raise HTTPException(status_code=404, detail="User not found")
@@ -112,7 +112,7 @@ def update_me(update: UserUpdate, user=Depends(verify_token)):
         logger.error(f"update_me failed: {e}")
         raise HTTPException(status_code=500, detail="Update failed")
     finally:
-        conn.close()
+        release_db(conn)
 
     return {"id": updated[0], "username": updated[1], "email": updated[2]}
 
@@ -130,7 +130,7 @@ def get_my_circles(user=Depends(verify_token)):
         """, (user["user_id"],))
         rows = cursor.fetchall()
     finally:
-        conn.close()
+        release_db(conn)
 
     return [{"id": r[0], "name": r[1], "invite_code": r[2], "joined_at": r[3]} for r in rows]
 
@@ -162,7 +162,7 @@ def get_my_circles_full(user=Depends(verify_token)):
         """, (user["user_id"],))
         rows = cursor.fetchall()
     finally:
-        conn.close()
+        release_db(conn)
 
     # Collapse flat rows into nested structure: { circle_id: { ...circle, members: [] } }
     circles: dict = {}
@@ -218,7 +218,7 @@ def logout(credentials=Depends(security)):
             conn.rollback()
         finally:
             cur.close()
-            conn.close()
+            release_db(conn)
 
     logger.info(f"user logged out jti={jti}")
     return {"message": "Logged out"}

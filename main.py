@@ -17,6 +17,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from routers import users, circles, messages
 from bloc_logger import get_logger
+from routers.ai import router as ai_router
 
 logger = get_logger("request")
 
@@ -61,6 +62,7 @@ async def log_requests(request: Request, call_next):
 app.include_router(users.router)
 app.include_router(circles.router)
 app.include_router(messages.router)
+app.include_router(ai_router)
 
 @app.get("/hello")
 def hello():

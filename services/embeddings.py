@@ -63,3 +63,41 @@ def embed_message(message_id: int, content: str) -> None:
     finally:
         cur.close()
         release_db(conn)
+
+def search_messages(query: str, circle_id: int, limit: int = 10) -> list[dict]:
+    """Embed query and return ranked messages by cosine similarity."""
+    query_embedding = generate_embedding(query)
+    embedding_str = str(query_embedding)  # matches how embed_message stores vectors
+
+    conn = get_db()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    m.id,
+                    m.content,
+                    m.sender_id,
+                    m.created_at,
+                    me.embedding <=> %s::vector AS distance
+                FROM message_embeddings me
+                JOIN messages m ON m.id = me.message_id
+                WHERE m.circle_id = %s
+                ORDER BY distance ASC
+                LIMIT %s
+                """,
+                (embedding_str, circle_id, limit),
+            )
+            rows = cur.fetchall()
+            return [
+                {
+                    "id": row[0],
+                    "content": row[1],
+                    "sender_id": row[2],
+                    "created_at": row[3].isoformat(),
+                    "score": round(1 - float(row[4]), 4),
+                }
+                for row in rows
+            ]
+    finally:
+        release_db(conn)
