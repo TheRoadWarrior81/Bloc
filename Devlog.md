@@ -427,3 +427,65 @@ Neon password was rotated mid-session — updated across `.env` and Railway.
 ### Current state
 Production stable. All tables in place. Embedding service verified locally and
 in production. Ready for Day 2 semantic search endpoint.
+
+## Session 22 — May 6, 2026
+
+### Focus
+Semantic search endpoint — end to end
+
+### What was done
+
+**Bug fix: connection pool leak in users router**
+Discovered `routers/users.py` was still calling `conn.close()` instead of
+`release_db(conn)` across all routes (register, login, get_me, update_me,
+get_my_circles, get_my_circles_full, logout). This was exhausting the
+`ThreadedConnectionPool` on login, causing 500s. Fixed by importing
+`release_db` and replacing all `conn.close()` calls.
+
+**`search_messages()` in `services/embeddings.py`**
+Added semantic search function that embeds the query string via
+`generate_embedding()`, runs cosine similarity (`<=>`) against
+`message_embeddings`, joins to `messages`, and returns results ranked by
+similarity score (`1 - distance`). Fixed two bugs caught during testing:
+- `embed_text` placeholder replaced with correct `generate_embedding`
+- `m.sender_id` corrected to `m.user_id` to match actual schema
+
+**`routers/ai.py`**
+Created new router with `GET /circles/{circle_id}/search?q=` endpoint.
+Includes membership check against `user_circles`, calls `search_messages()`,
+returns ranked results with query echoed back. Fixed table name from
+`circle_members` to `user_circles` during testing.
+
+**Background embedding on message send**
+Hooked `embed_message` into `routers/messages.py` in two places:
+- REST route: via FastAPI `BackgroundTasks` — embedding fires after response
+  is sent, sender doesn't wait on Gemini latency
+- WebSocket route: via `asyncio.get_event_loop().run_in_executor()` —
+  same effect inside the async WebSocket loop where `BackgroundTasks`
+  is unavailable
+
+**Registered router in `main.py`**
+Added `ai_router` import and `app.include_router(ai_router)`.
+
+### Issues encountered
+- Pool exhaustion on login — `users.py` missed during Session 21 pooling
+  migration, all routes still calling `conn.close()`
+- `circle_members` table name in `ai.py` — correct name is `user_circles`
+- `m.sender_id` column does not exist — correct column is `m.user_id`
+- Push rejected twice due to remote divergence — resolved with
+  `git pull --rebase origin main`
+
+### Verification
+End-to-end curl test passed in production:
+- Sent two messages: "what time is the standup tomorrow" and
+  "anyone free for lunch today"
+- Searched "meeting schedule"
+- Results correctly ranked by semantic similarity:
+  - standup message → 0.82 (highest, no shared words with query)
+  - lunch message → 0.78
+  - "how's it going" (old message) → 0.76 (lowest, least relevant)
+
+### Current state
+Production stable. Semantic search live. Embeddings generated as background
+tasks on every new message via both REST and WebSocket paths.
+
