@@ -11,7 +11,7 @@ def is_member(circle_id: int, user_id: int) -> bool:
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT 1 FROM circle_members WHERE circle_id = %s AND user_id = %s",
+                "SELECT 1 FROM user_circles WHERE circle_id = %s AND user_id = %s",
                 (circle_id, user_id),
             )
             return cur.fetchone() is not None
