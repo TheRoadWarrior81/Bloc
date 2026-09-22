@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, Depends, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from auth import get_db, release_db, verify_token, security
+from auth import get_db, release_db, verify_token, get_db_scoped, security
 from config import settings
 from models import UserRegister, UserLogin, UserUpdate
 from bloc_logger import get_logger
@@ -18,6 +18,7 @@ router = APIRouter()
 @router.post("/users/register")
 @limiter.limit(settings.RATE_LIMIT)
 def register(request: Request, body: UserRegister):
+    # No authenticated user yet — stays on plain get_db(), not RLS-scoped.
     password_hash = bcrypt.hashpw(
         body.password.encode('utf-8'),
         bcrypt.gensalt()
@@ -46,6 +47,7 @@ def register(request: Request, body: UserRegister):
 @router.post("/users/login")
 @limiter.limit(settings.RATE_LIMIT)
 def login(request: Request, body: UserLogin):
+    # No authenticated user yet — stays on plain get_db(), not RLS-scoped.
     conn = get_db()
     cursor = conn.cursor()
     try:
@@ -79,8 +81,7 @@ def login(request: Request, body: UserLogin):
 
 
 @router.get("/users/me")
-def get_me(user=Depends(verify_token)):
-    conn = get_db()
+def get_me(user=Depends(verify_token), conn=Depends(get_db_scoped)):
     cursor = conn.cursor()
     try:
         cursor.execute(
@@ -97,8 +98,7 @@ def get_me(user=Depends(verify_token)):
 
 
 @router.patch("/users/me")
-def update_me(update: UserUpdate, user=Depends(verify_token)):
-    conn = get_db()
+def update_me(update: UserUpdate, user=Depends(verify_token), conn=Depends(get_db_scoped)):
     cursor = conn.cursor()
     try:
         cursor.execute(
@@ -118,8 +118,7 @@ def update_me(update: UserUpdate, user=Depends(verify_token)):
 
 
 @router.get("/users/me/circles")
-def get_my_circles(user=Depends(verify_token)):
-    conn = get_db()
+def get_my_circles(user=Depends(verify_token), conn=Depends(get_db_scoped)):
     cursor = conn.cursor()
     try:
         cursor.execute("""
@@ -136,13 +135,12 @@ def get_my_circles(user=Depends(verify_token)):
 
 
 @router.get("/users/me/circles/full")
-def get_my_circles_full(user=Depends(verify_token)):
+def get_my_circles_full(user=Depends(verify_token), conn=Depends(get_db_scoped)):
     """
     Returns all blocs the user is in, with members nested.
     Single query instead of 1 + N — eliminates the N+1 problem
     in BlocContext where we fetched members separately per bloc.
     """
-    conn = get_db()
     cursor = conn.cursor()
     try:
         cursor.execute("""
@@ -164,7 +162,6 @@ def get_my_circles_full(user=Depends(verify_token)):
     finally:
         release_db(conn)
 
-    # Collapse flat rows into nested structure: { circle_id: { ...circle, members: [] } }
     circles: dict = {}
     for row in rows:
         circle_id, name, invite_code, member_id, username, role = row
@@ -186,6 +183,8 @@ def get_my_circles_full(user=Depends(verify_token)):
 
 @router.post("/users/logout")
 def logout(credentials=Depends(security)):
+    # No RLS scoping needed — this writes to revoked_tokens using the jti
+    # from the token itself, not a user-owned row.
     token = credentials.credentials
     try:
         payload = jwt.decode(

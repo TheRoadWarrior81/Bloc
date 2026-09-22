@@ -7,8 +7,6 @@ from config import settings
 
 security = HTTPBearer()
 
-# One pool shared across all requests.
-# minconn=2 keeps warm connections ready; maxconn=10 prevents overwhelming Neon.
 _pool = psycopg2.pool.ThreadedConnectionPool(
     minconn=1,
     maxconn=5,
@@ -35,8 +33,13 @@ def get_db():
 
 def release_db(conn):
     """Return a connection to the pool instead of closing it."""
+    try:
+        cur = conn.cursor()
+        cur.execute("RESET app.current_user_id")
+        cur.close()
+    except Exception:
+        pass
     _pool.putconn(conn)
-
 
 def verify_token(credentials=Depends(security)):
     try:
@@ -56,7 +59,7 @@ def verify_token(credentials=Depends(security)):
                     raise HTTPException(status_code=401, detail="Token has been revoked")
             finally:
                 cur.close()
-                release_db(conn)          # ← return to pool, not close
+                release_db(conn)
 
         return payload
     except HTTPException:
@@ -65,3 +68,16 @@ def verify_token(credentials=Depends(security)):
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+def get_db_scoped(user=Depends(verify_token)):
+    """
+    Same as get_db(), but sets app.current_user_id on the connection
+    so RLS policies can scope every query to the authenticated user.
+    """
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        cur.execute("SET app.current_user_id = %s", (str(user["user_id"]),))
+    finally:
+        cur.close()
+    return conn
