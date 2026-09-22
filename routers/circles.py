@@ -3,7 +3,7 @@ import string
 import psycopg2
 from psycopg2 import errors as pg_errors
 from fastapi import APIRouter, HTTPException, Depends
-from auth import get_db, verify_token, release_db
+from auth import get_db, get_db_scoped, verify_token, release_db
 from bloc_logger import get_logger
 from models import CircleCreate, JoinByCode, TransferAdminRequest
 
@@ -12,8 +12,7 @@ router = APIRouter()
 
 
 @router.post("/circles")
-def create_circle(circle: CircleCreate, user=Depends(verify_token)):
-    conn = get_db()
+def create_circle(circle: CircleCreate, user=Depends(verify_token), conn=Depends(get_db_scoped)):
     cursor = conn.cursor()
     invite_code = circle.invite_code or ''.join(
         random.choices(string.ascii_uppercase + string.digits, k=8)
@@ -43,8 +42,7 @@ def create_circle(circle: CircleCreate, user=Depends(verify_token)):
 
 
 @router.get("/circles/{circle_id}")
-def get_circle(circle_id: int, user=Depends(verify_token)):
-    conn = get_db()
+def get_circle(circle_id: int, user=Depends(verify_token), conn=Depends(get_db_scoped)):
     cursor = conn.cursor()
     try:
         cursor.execute(
@@ -70,8 +68,7 @@ def get_circle(circle_id: int, user=Depends(verify_token)):
 
 
 @router.get("/circles/{circle_id}/members")
-def get_circle_members(circle_id: int, user=Depends(verify_token)):
-    conn = get_db()
+def get_circle_members(circle_id: int, user=Depends(verify_token), conn=Depends(get_db_scoped)):
     cursor = conn.cursor()
     try:
         cursor.execute(
@@ -95,8 +92,7 @@ def get_circle_members(circle_id: int, user=Depends(verify_token)):
 
 
 @router.post("/circles/{circle_id}/join")
-def join_circle(circle_id: int, user=Depends(verify_token)):
-    conn = get_db()
+def join_circle(circle_id: int, user=Depends(verify_token), conn=Depends(get_db_scoped)):
     cursor = conn.cursor()
     try:
         cursor.execute("SELECT id FROM circles WHERE id = %s;", (circle_id,))
@@ -124,8 +120,7 @@ def join_circle(circle_id: int, user=Depends(verify_token)):
 
 
 @router.post("/circles/join-by-code")
-def join_by_code(body: JoinByCode, user=Depends(verify_token)):
-    conn = get_db()
+def join_by_code(body: JoinByCode, user=Depends(verify_token), conn=Depends(get_db_scoped)):
     cursor = conn.cursor()
     try:
         cursor.execute("SELECT id FROM circles WHERE invite_code = %s;", (body.invite_code,))
@@ -154,8 +149,7 @@ def join_by_code(body: JoinByCode, user=Depends(verify_token)):
 
 
 @router.delete("/circles/{circle_id}/leave")
-def leave_circle(circle_id: int, user=Depends(verify_token)):
-    conn = get_db()
+def leave_circle(circle_id: int, user=Depends(verify_token), conn=Depends(get_db_scoped)):
     cursor = conn.cursor()
     try:
         # Check if requester is admin
@@ -208,8 +202,7 @@ def leave_circle(circle_id: int, user=Depends(verify_token)):
 
 
 @router.delete("/circles/{circle_id}/members/{target_user_id}")
-def kick_member(circle_id: int, target_user_id: int, user=Depends(verify_token)):
-    conn = get_db()
+def kick_member(circle_id: int, target_user_id: int, user=Depends(verify_token), conn=Depends(get_db_scoped)):
     cursor = conn.cursor()
     try:
         # Check requester is admin
@@ -249,8 +242,7 @@ def kick_member(circle_id: int, target_user_id: int, user=Depends(verify_token))
 
 
 @router.delete("/circles/{circle_id}")
-def delete_circle(circle_id: int, user=Depends(verify_token)):
-    conn = get_db()
+def delete_circle(circle_id: int, user=Depends(verify_token), conn=Depends(get_db_scoped)):
     cursor = conn.cursor()
     try:
         # Check requester is admin
@@ -279,8 +271,7 @@ def delete_circle(circle_id: int, user=Depends(verify_token)):
 
 
 @router.patch("/circles/{circle_id}/transfer-admin")
-def transfer_admin(circle_id: int, body: TransferAdminRequest, user=Depends(verify_token)):
-    conn = get_db()
+def transfer_admin(circle_id: int, body: TransferAdminRequest, user=Depends(verify_token), conn=Depends(get_db_scoped)):
     cursor = conn.cursor()
     try:
         # Check requester is admin

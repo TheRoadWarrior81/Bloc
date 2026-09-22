@@ -1,7 +1,7 @@
 import asyncio
 import jwt
 from fastapi import APIRouter, HTTPException, Depends, WebSocket, WebSocketDisconnect, BackgroundTasks
-from auth import get_db, release_db, verify_token
+from auth import get_db, get_db_scoped, release_db, verify_token
 from config import settings
 from bloc_logger import get_logger
 from services.embeddings import embed_message
@@ -43,13 +43,12 @@ manager = ConnectionManager()
 
 
 @router.post("/circles/{circle_id}/messages")
-def send_message(circle_id: int, body: dict, background_tasks: BackgroundTasks, user=Depends(verify_token)):
+def send_message(circle_id: int, body: dict, background_tasks: BackgroundTasks, user=Depends(verify_token), conn=Depends(get_db_scoped)):
     content = body.get("content", "").strip()
     if not content:
         raise HTTPException(status_code=400, detail="Message cannot be empty")
     if len(content) > 1000:
         raise HTTPException(status_code=400, detail="Message too long")
-    conn = get_db()
     cur = conn.cursor()
     try:
         cur.execute(
@@ -89,9 +88,9 @@ def get_messages(
     circle_id: int,
     limit: int = 50,
     before: int = None,
-    user=Depends(verify_token)
+    user=Depends(verify_token),
+    conn=Depends(get_db_scoped)
 ):
-    conn = get_db()
     cur = conn.cursor()
     try:
         cur.execute(
