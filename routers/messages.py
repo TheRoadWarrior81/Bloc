@@ -42,6 +42,16 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
+def _set_scope(conn, user_id: int):
+    """Manual equivalent of get_db_scoped for contexts (like WebSockets)
+    that can't use FastAPI's Depends() chain."""
+    cur = conn.cursor()
+    try:
+        cur.execute("SET app.current_user_id = %s", (str(user_id),))
+    finally:
+        cur.close()
+
+
 @router.post("/circles/{circle_id}/messages")
 def send_message(circle_id: int, body: dict, background_tasks: BackgroundTasks, user=Depends(verify_token), conn=Depends(get_db_scoped)):
     content = body.get("content", "").strip()
@@ -177,7 +187,9 @@ async def websocket_endpoint(circle_id: int, websocket: WebSocket):
             cur.close()
             release_db(conn)
 
+    # Membership check — now RLS-scoped
     conn = get_db()
+    _set_scope(conn, user["user_id"])
     cur = conn.cursor()
     try:
         cur.execute(
@@ -202,7 +214,9 @@ async def websocket_endpoint(circle_id: int, websocket: WebSocket):
             if not content or len(content) > 1000:
                 continue
 
+            # Message insert — now RLS-scoped
             conn = get_db()
+            _set_scope(conn, user["user_id"])
             cur = conn.cursor()
             try:
                 cur.execute(
