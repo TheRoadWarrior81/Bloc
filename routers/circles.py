@@ -3,7 +3,7 @@ import string
 import psycopg2
 from psycopg2 import errors as pg_errors
 from fastapi import APIRouter, HTTPException, Depends
-from auth import get_db, verify_token
+from auth import get_db, verify_token, release_db
 from bloc_logger import get_logger
 from models import CircleCreate, JoinByCode, TransferAdminRequest
 
@@ -39,7 +39,7 @@ def create_circle(circle: CircleCreate, user=Depends(verify_token)):
         logger.error(f"create_circle failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to create bloc")
     finally:
-        conn.close()
+        release_db(conn)
 
 
 @router.get("/circles/{circle_id}")
@@ -61,7 +61,7 @@ def get_circle(circle_id: int, user=Depends(verify_token)):
         )
         row = cursor.fetchone()
     finally:
-        conn.close()
+        release_db(conn)
 
     if not row:
         logger.warning(f"circle not found circle_id={circle_id}")
@@ -89,7 +89,7 @@ def get_circle_members(circle_id: int, user=Depends(verify_token)):
         """, (circle_id,))
         rows = cursor.fetchall()
     finally:
-        conn.close()
+        release_db(conn)
 
     return [{"id": r[0], "username": r[1], "joined_at": r[2], "role": r[3]} for r in rows]
 
@@ -120,7 +120,7 @@ def join_circle(circle_id: int, user=Depends(verify_token)):
             raise HTTPException(status_code=500, detail="Failed to join circle")
         return {"message": f"Joined circle {circle_id}"}
     finally:
-        conn.close()
+        release_db(conn)
 
 
 @router.post("/circles/join-by-code")
@@ -150,7 +150,7 @@ def join_by_code(body: JoinByCode, user=Depends(verify_token)):
             raise HTTPException(status_code=500, detail="Failed to join circle")
         return {"message": f"Joined circle {circle[0]}"}
     finally:
-        conn.close()
+        release_db(conn)
 
 
 @router.delete("/circles/{circle_id}/leave")
@@ -204,7 +204,7 @@ def leave_circle(circle_id: int, user=Depends(verify_token)):
         logger.error(f"leave_circle failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to leave circle")
     finally:
-        conn.close()
+        release_db(conn)
 
 
 @router.delete("/circles/{circle_id}/members/{target_user_id}")
@@ -245,7 +245,7 @@ def kick_member(circle_id: int, target_user_id: int, user=Depends(verify_token))
         logger.error(f"kick_member failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to kick member")
     finally:
-        conn.close()
+        release_db(conn)
 
 
 @router.delete("/circles/{circle_id}")
@@ -275,7 +275,7 @@ def delete_circle(circle_id: int, user=Depends(verify_token)):
         logger.error(f"delete_circle failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete bloc")
     finally:
-        conn.close()
+        release_db(conn)
 
 
 @router.patch("/circles/{circle_id}/transfer-admin")
@@ -318,4 +318,4 @@ def transfer_admin(circle_id: int, body: TransferAdminRequest, user=Depends(veri
         logger.error(f"transfer_admin failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to transfer admin")
     finally:
-        conn.close()
+        release_db(conn)
